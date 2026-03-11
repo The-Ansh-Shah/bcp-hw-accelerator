@@ -13,6 +13,10 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   └── sat_solver_top.v    # Top-level integration
 ├── tb/                 # Testbenches
 │   └── sat_solver_tb.v     # Main simulation testbench
+├── test_env/           # Environment sanity check (sample VCS flow)
+│   ├── sample_counter.v       # Simple 4-bit counter
+│   ├── sample_counter_tb.v    # Testbench for sample counter
+│   └── Makefile               # Compile & run the sample
 ├── tests/              # Test CNF instances
 ├── output/             # Simulation logs and waveforms
 ├── Makefile            # Build and simulation flow
@@ -26,6 +30,17 @@ Requires Synopsys VCS. On the Berkeley EECS instructional machines (`eda-[1-4].e
 ```bash
 source /home/ff/eecs151/eecs151source.bashrc
 ```
+
+### Verify your environment
+
+Before working on the main design, confirm VCS is available by running the sample counter in `test_env/`:
+
+```bash
+cd test_env
+make run
+```
+
+You should see `ALL TESTS PASSED` in the output. Run `make clean` to remove artifacts.
 
 ### Commands
 
