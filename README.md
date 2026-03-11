@@ -1,4 +1,45 @@
-# bcp-hw-accelerator
-BCP Hardware Accelerator
+# HW-Accelerated SAT Solver: BCP + CDCL RTL Integration
 
-The EECS151 bashrc file is a reference from the class EECS 151, which compiles which EDA tools to source from the EDA instructional servers. Looking to hand pick which tools we will use.
+Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Conflict-Driven Clause Learning (CDCL) into a self-contained, synthesizable hardware SAT solver. This project builds on existing hardware BCP and CDCL research and focuses on integrating the core components — BCP engine, conflict analysis unit, and VSIDS decision logic — into a unified design, measuring control complexity and area overhead of full integration.
+
+## Directory Structure
+
+```
+├── src/                # RTL source files (Verilog)
+│   ├── bcp_engine.v        # Boolean Constraint Propagation unit
+│   ├── cdcl_unit.v         # Conflict-Driven Clause Learning / conflict analysis
+│   ├── vsids.v             # VSIDS decision heuristic logic
+│   ├── clause_database.v   # Clause storage and management
+│   └── sat_solver_top.v    # Top-level integration
+├── tb/                 # Testbenches
+│   └── sat_solver_tb.v     # Main simulation testbench
+├── tests/              # Test CNF instances
+├── output/             # Simulation logs and waveforms
+├── Makefile            # Build and simulation flow
+└── README.md
+```
+
+## Build & Simulation
+
+Requires Synopsys VCS. On the Berkeley EECS instructional machines (`eda-[1-4].eecs.berkeley.edu`), source the tool setup first:
+
+```bash
+source /home/ff/eecs151/eecs151source.bashrc
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `make` | Compile the design |
+| `make run test=<name>` | Run a single test |
+| `make run-all` | Run all tests in `tests/` |
+| `make dvrun test=<name>` | Run with waveform dump and open DVE |
+| `make clean` | Remove build artifacts |
+
+## Team
+
+- **Ansh Shah**
+- **Evan Wong**
+
+UC Berkeley — Spring 2025
