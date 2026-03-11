@@ -31,25 +31,30 @@ Requires Synopsys VCS. On the Berkeley EECS instructional machines (`eda-[1-4].e
 source /home/ff/eecs151/eecs151source.bashrc
 ```
 
-### Verify your environment
+### Verify your environment (`test_env/`)
 
-Before working on the main design, confirm VCS is available by running the sample counter in `test_env/`:
+The `test_env/` directory contains a simple 4-bit counter and testbench to confirm VCS works. The Makefile sources the environment automatically, so no manual setup is needed.
 
 ```bash
 cd test_env
-make run
+make clean && make run
 ```
 
-You should see `ALL TESTS PASSED` in the output. Run `make clean` to remove artifacts.
+You should see `ALL TESTS PASSED`. This also produces a `waves.vpd` waveform dump. To view it, RDP into the machine and run:
 
-### Commands
+```bash
+dve -vpd waves.vpd &
+```
+
+Run `make clean` to remove all build artifacts.
+
+### Commands (main project)
 
 | Command | Description |
 |---|---|
 | `make` | Compile the design |
 | `make run test=<name>` | Run a single test |
 | `make run-all` | Run all tests in `tests/` |
-| `make dvrun test=<name>` | Run with waveform dump and open DVE |
 | `make clean` | Remove build artifacts |
 
 ## Team

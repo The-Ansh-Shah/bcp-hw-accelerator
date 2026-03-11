@@ -1,0 +1,27 @@
+# Preference setting overrides
+gui_create_pref_key -category {Globals} -key {load_detail_for_funcov} -value_type {bool} -value {false}
+
+# State setting overrides
+gui_state_default_create -off -ini
+gui_create_state_key -category FindDialog -key m_pMatchCase -value_type bool -value false
+gui_create_state_key -category FindDialog -key m_pMatchWord -value_type bool -value false
+gui_create_state_key -category FindDialog -key m_pUseCombo -value_type string -value {}
+gui_create_state_key -category FindDialog -key m_pWrapAround -value_type bool -value true
+gui_state_default_create -off
+
+# Begin command logging
+gui_open_db -file vcdplus.vpd
+gui_list_select -id Data.1 -selected  { sample_counter_tb.rst   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.clk  sample_counter_tb.rst   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.rst   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.rst  {sample_counter_tb.count[3:0]}   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.rst  {sample_counter_tb.count[3:0]}  {sample_counter_tb.num_errors[31:0]}   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.clk  sample_counter_tb.rst   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.rst   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.clk   }
+gui_list_select -id Data.1 -selected  { sample_counter_tb.clk  sample_counter_tb.rst  {sample_counter_tb.count[3:0]}  {sample_counter_tb.num_errors[31:0]}   }
+gui_open_window Wave
+gui_list_add -id Wave.1 -from Data.1 { sample_counter_tb.clk sample_counter_tb.rst {sample_counter_tb.count[3:0]} {sample_counter_tb.num_errors[31:0]} } -insertionbar
+gui_list_select -id Wave.1 -selected  { {sample_counter_tb.count[3:0]}   }
+gui_marker_move -id  Wave.1 C1 100
+gui_zoom -window Wave.1 -full

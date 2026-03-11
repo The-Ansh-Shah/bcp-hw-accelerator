@@ -20,6 +20,7 @@ module sample_counter_tb;
     integer num_errors;
 
     initial begin
+        $vcdpluson;
         num_errors = 0;
         rst = 1;
         @(posedge clk); #1;

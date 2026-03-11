@@ -1,4 +1,6 @@
 # test_env Makefile — quick sanity check that VCS works.
+SHELL = /bin/bash
+ENV   = source ../eecs151source.bashrc &&
 
 SRCS = sample_counter.v
 TB   = sample_counter_tb.v
@@ -15,16 +17,11 @@ VCS_OPTS = \
 
 # Compile
 $(SIMV): $(SRCS) $(TB)
-	vcs $(VCS_OPTS) -top sample_counter_tb $(SRCS) $(TB) -o $(SIMV)
+	$(ENV) vcs $(VCS_OPTS) -top sample_counter_tb $(SRCS) $(TB) -o $(SIMV)
 
-# Run simulation
+# Run simulation and produce waveform dump
 run: $(SIMV)
-	./$(SIMV)
-
-# Run with waveform dump
-dvrun: $(SIMV)
-	./$(SIMV) +vcdplusfile=waves.vpd
-	dve -full64 -vpd waves.vpd &
+	$(ENV) ./$(SIMV) +vcdplusfile=waves.vpd
 
 clean:
 	rm -rf $(SIMV) $(SIMV).daidir csrc ucli.key DVEfiles waves.vpd

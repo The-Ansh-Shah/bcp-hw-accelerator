@@ -1,0 +1,9 @@
+#!/bin/sh -h 
+PYTHONHOME=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9///etc/search/pyh
+export PYTHONHOME
+PYTHONPATH=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/pylib27
+export PYTHONPATH
+LD_LIBRARY_PATH=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib:/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/pylib27
+export LD_LIBRARY_PATH
+/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/bin/vcsfind_create_index.exe  -z  "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/./idents_NDFlCB.xml.gz" "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/./idents_tapi.xml.gz" -o "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp"
+\mv "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp" "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db"

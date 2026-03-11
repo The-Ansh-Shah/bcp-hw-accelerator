@@ -1,0 +1,144 @@
+0
+36
++itf+/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcsdp_lite.tab
++lint=all,noVCDE,noONGS,noUI
++v2k
++vcsd1
++vpi
++warn=noTMR
+-Mamsrun=
+-Masflags=
+-Mcc=gcc
+-Mcfl= -pipe -fPIC -O -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include
+-Mcplusplus=g++
+-Mcrt0=
+-Mcrtn=
+-Mcsrc=
+-Mexternalobj=
+-Mldflags= -rdynamic
+-Mobjects= /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvirsim.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/liberrorinf.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libsnpsmalloc.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvfs.so
+-Mout=simv
+-Msaverestoreobj=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcs_save_restore_new.o
+-Msyslibs=-ldl
+-Mvcsaceobjs=
+-Mxcflags= -pipe -fPIC -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include
+-Mxllcflags=
+-debug_access+all
+-full64
+-gen_obj
+-o simv
+-picarchive
+-sverilog
+-timescale=1ns/1ps
+-top
+/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/bin/vcs1
+sample_counter_tb
+simv
+sample_counter.v
+sample_counter_tb.v
+92
+which_declare=declare -f
+_CONDA_ROOT=/home/cc/cs152/sp26/class/cs152-acz/conda
+_CONDA_EXE=/home/cc/cs152/sp26/class/cs152-acz/conda/bin/conda
+_CE_M=
+_CE_CONDA=
+XML_CATALOG_FILES=file:///home/cc/cs152/sp26/class/cs152-acz/conda/etc/xml/catalog file:///etc/xml/catalog
+XDG_SESSION_ID=8337
+XDG_RUNTIME_DIR=/run/user/30077
+XDG_DATA_DIRS=/home/cc/cs152/sp26/class/cs152-acz/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share
+VSCODE_PYTHON_AUTOACTIVATE_GUARD=1
+VSCODE_IPC_HOOK_CLI=/run/user/30077/vscode-ipc-a0603cd8-5f7e-475b-ae92-25259874c2f1.sock
+VSCODE_GIT_IPC_HANDLE=/run/user/30077/vscode-git-05e4781bad.sock
+VSCODE_GIT_ASKPASS_NODE=/home/cc/cs152/sp26/class/cs152-acz/.vscode-server/cli/servers/Stable-ce099c1ed25d9eb3076c11e4a280f3eb52b4fbeb/server/node
+VSCODE_GIT_ASKPASS_MAIN=/home/cc/cs152/sp26/class/cs152-acz/.vscode-server/cli/servers/Stable-ce099c1ed25d9eb3076c11e4a280f3eb52b4fbeb/server/extensions/git/dist/askpass-main.js
+VSCODE_GIT_ASKPASS_EXTRA_ARGS=
+VMR_MODE_FLAG=64
+VENDOR=unknown
+VCS_PYTHON2=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9///Linux/bin/Python-2.7.15/bin/python
+VCS_PATHMAP_PRELOAD_DONE=1
+VCS_MX_HOME_INTERNAL=1
+VCS_MODE_FLAG=64
+VCS_HOME=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//
+VCS_EXEC_DONE=1
+VCS_DEPTH=0
+VCS_ARG_ADDED_FOR_TMP=1
+VCS_ARCH=linux64
+UNAME=/bin/uname
+TOOL_HOME=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64
+TERM_PROGRAM_VERSION=1.111.0
+TERM_PROGRAM=vscode
+S_COLORS=auto
+STBITS=64
+SSH_CONNECTION=10.44.113.88 50497 128.32.42.147 22
+SSH_CLIENT=10.44.113.88 50497 22
+SSH_AUTH_SOCK=/run/user/30077/vscode-ssh-auth-sock-578481230
+SNPS_VCS_CLANG_PATH=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9///linux64/clang
+SNPS_INTERNAL_VCS_LINUX_OS=linux
+SELINUX_USE_CURRENT_RANGE=
+SELINUX_ROLE_REQUESTED=
+SELINUX_LEVEL_REQUESTED=
+SCRNAME=vcs
+SCRIPT_NAME=vcs
+RUNAS=/share/b/runas/x86_64
+PYTHON_BASIC_REPL=1
+PYTHONSTARTUP=/home/cc/cs152/sp26/class/cs152-acz/.vscode-server/data/User/workspaceStorage/dbe875009877fbcbf6d8980a9ea227e1/ms-python.python/pythonrc.py
+OVA_UUM=0
+OSTYPE=linux
+OS=Linux
+NNTPSERVER=news.csua.berkeley.edu
+MODULES_RUN_QUARANTINE=LD_LIBRARY_PATH LD_PRELOAD
+MODULES_CMD=/usr/share/Modules/libexec/modulecmd.tcl
+MODULESHOME=/usr/share/Modules
+MODULEPATH_modshare=/usr/share/Modules/modulefiles:2:/etc/modulefiles:2:/usr/share/modulefiles:2
+MODULEPATH=/etc/scl/modulefiles:/etc/scl/modulefiles:/usr/share/Modules/modulefiles:/etc/modulefiles:/usr/share/modulefiles
+MGLS_LICENSE_FILE=1717@license-srv.eecs.berkeley.edu
+MFLAGS=
+MASTERDIR=/home/ff/cs152
+MASTER=cs152
+MAMBA_ROOT_PREFIX=/home/cc/cs152/sp26/class/cs152-acz/conda
+MAMBA_EXE=/home/cc/cs152/sp26/class/cs152-acz/conda/bin/mamba
+MAKE_TERMOUT=/dev/pts/25
+MAKE_TERMERR=/dev/pts/25
+MAKELEVEL=1
+MAKEFLAGS=
+LOADEDMODULES=
+LESSOPEN=||/usr/bin/lesspipe.sh %s
+LD_RUN_PATH=/home/ff/cs152/install/lib
+LC_ALL=C
+HOSTTYPE=x86_64-linux
+HISTCONTROL=ignoredups
+GROUP=cs152
+GIT_ASKPASS=/home/cc/cs152/sp26/class/cs152-acz/.vscode-server/cli/servers/Stable-ce099c1ed25d9eb3076c11e4a280f3eb52b4fbeb/server/extensions/git/dist/askpass.sh
+EESOF_TEMP_PATH=/run/user/30077
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/30077/bus
+CVS_RSH=ssh
+CONDA_SHLVL=1
+CONDA_PYTHON_EXE=/home/cc/cs152/sp26/class/cs152-acz/conda/bin/python
+CONDA_PROMPT_MODIFIER=(base) 
+CONDA_PREFIX=/home/cc/cs152/sp26/class/cs152-acz/conda
+CONDA_EXE=/home/cc/cs152/sp26/class/cs152-acz/conda/bin/conda
+CONDA_DEFAULT_ENV=base
+COLORTERM=truecolor
+CLAUDE_CODE_SSE_PORT=18135
+CDS_LIC_FILE=5280@license-srv.eecs.berkeley.edu
+BASH_FUNC_which%%=() {  ( alias;_ eval ${which_declare} ) | /usr/bin/which --tty-only --read-alias --read-functions --show-tilde --show-dot $@_}
+BASH_FUNC_switchml%%=() {  typeset swfound=1;_ if [ "${MODULES_USE_COMPAT_VERSION:-0}" = '1' ]; then_ typeset swname='main';_ if [ -e /usr/share/Modules/libexec/modulecmd.tcl ]; then_ typeset swfound=0;_ unset MODULES_USE_COMPAT_VERSION;_ fi;_ else_ typeset swname='compatibility';_ if [ -e /usr/share/Modules/libexec/modulecmd-compat ]; then_ typeset swfound=0;_ MODULES_USE_COMPAT_VERSION=1;_ export MODULES_USE_COMPAT_VERSION;_ fi;_ fi;_ if [ $swfound -eq 0 ]; then_ echo "Switching to Modules $swname version";_ source /usr/share/Modules/init/bash;_ else_ echo "Cannot switch to Modules $swname version, command not found";_ return 1;_ fi_}
+BASH_FUNC_scl%%=() {  if [ "$1" = "load" -o "$1" = "unload" ]; then_ eval "module $@";_ else_ /usr/bin/scl "$@";_ fi_}
+BASH_FUNC_module%%=() {  unset _mlshdbg;_ if [ "${MODULES_SILENT_SHELL_DEBUG:-0}" = '1' ]; then_ case "$-" in _ *v*x*)_ set +vx;_ _mlshdbg='vx'_ ;;_ *v*)_ set +v;_ _mlshdbg='v'_ ;;_ *x*)_ set +x;_ _mlshdbg='x'_ ;;_ *)_ _mlshdbg=''_ ;;_ esac;_ fi;_ unset _mlre _mlIFS;_ if [ -n "${IFS+x}" ]; then_ _mlIFS=$IFS;_ fi;_ IFS=' ';_ for _mlv in ${MODULES_RUN_QUARANTINE:-};_ do_ if [ "${_mlv}" = "${_mlv##*[!A-Za-z0-9_]}" -a "${_mlv}" = "${_mlv#[0-9]}" ]; then_ if [ -n "`eval 'echo ${'$_mlv'+x}'`" ]; then_ _mlre="${_mlre:-}${_mlv}_modquar='`eval 'echo ${'$_mlv'}'`' ";_ fi;_ _mlrv="MODULES_RUNENV_${_mlv}";_ _mlre="${_mlre:-}${_mlv}='`eval 'echo ${'$_mlrv':-}'`' ";_ fi;_ done;_ if [ -n "${_mlre:-}" ]; then_ eval `eval ${_mlre} /usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash '"$@"'`;_ else_ eval `/usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash "$@"`;_ fi;_ _mlstatus=$?;_ if [ -n "${_mlIFS+x}" ]; then_ IFS=$_mlIFS;_ else_ unset IFS;_ fi;_ unset _mlre _mlv _mlrv _mlIFS;_ if [ -n "${_mlshdbg:-}" ]; then_ set -$_mlshdbg;_ fi;_ unset _mlshdbg;_ return $_mlstatus_}
+BASH_FUNC_ml%%=() {  module ml "$@"_}
+ARCH=x86_64
+AGILEESOFD_LICENSE_FILE=27000@license-srv.eecs.berkeley.edu
+ADS_LICENSE_FILE=27000@license-srv.eecs.berkeley.edu
+0
+0
+3
+1773260688 sample_counter_tb.v
+1773259080 sample_counter.v
+1706328375 /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcsdp_lite.tab
+4
+1706329987 /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvirsim.so
+1706329186 /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/liberrorinf.so
+1706329117 /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libsnpsmalloc.so
+1706329181 /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvfs.so
+1773260711 simv.daidir
+-1 partitionlib
