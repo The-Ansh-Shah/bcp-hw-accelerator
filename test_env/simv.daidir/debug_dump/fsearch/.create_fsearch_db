@@ -1,9 +1,9 @@
 #!/bin/sh -h 
-PYTHONHOME=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9///etc/search/pyh
+PYTHONHOME=/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/etc/search/pyh
 export PYTHONHOME
-PYTHONPATH=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/pylib27
+PYTHONPATH=/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/pylib27
 export PYTHONPATH
-LD_LIBRARY_PATH=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib:/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/pylib27
+LD_LIBRARY_PATH=/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib:/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/pylib27
 export LD_LIBRARY_PATH
-/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/bin/vcsfind_create_index.exe  -z  "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/./idents_NDFlCB.xml.gz" "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/./idents_tapi.xml.gz" -o "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp"
-\mv "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp" "/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db"
+/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/bin/vcsfind_create_index.exe  -z  "/home/aa/users/cs199-cbj/Documents/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/./idents_o2Zr4S.xml.gz" -o "/home/aa/users/cs199-cbj/Documents/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp"
+\mv "/home/aa/users/cs199-cbj/Documents/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db_tmp" "/home/aa/users/cs199-cbj/Documents/bcp-hw-accelerator/test_env/simv.daidir/debug_dump/fsearch/fsearch.db"

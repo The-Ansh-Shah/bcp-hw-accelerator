@@ -19,30 +19,29 @@ PRODUCT_TIMESTAMP=product_timestamp
 # Path to runtime library
 DEPLIBS=
 VCSUCLI=-lvcsucli
-LLVM_FLAGS=
-RUNTIME=-lvcsnew -lsimprofile -luclinative /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcs_tls.o $(DEPLIBS) 
+RUNTIME=-lvcsnew -lsimprofile -luclinative /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/vcs_tls.o $(DEPLIBS) 
 
-VCS_SAVE_RESTORE_OBJ=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcs_save_restore_new.o
+VCS_SAVE_RESTORE_OBJ=/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/vcs_save_restore_new.o
 
 # Select your favorite compiler
 
 # Linux:
-# Compiler: 
 VCS_CC=gcc
+
 # Internal CC for gen_c flow:
 CC_CG=gcc
+# User overrode default CC: 
+VCS_CC=gcc
 # Loader
 LD=g++
-STDLIB = 
 
 # Strip Flags for target product
 STRIPFLAGS= 
 
 PRE_LDFLAGS= # Loader Flags
-LDFLAGS= -rdynamic  -Wl,-rpath='$$ORIGIN'/simv.daidir -Wl,-rpath=./simv.daidir -Wl,-rpath=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib -L/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib 
+LDFLAGS= -rdynamic  -Wl,-rpath='$$ORIGIN'/simv.daidir -Wl,-rpath=./simv.daidir -Wl,-rpath=/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib -L/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib 
 # Picarchive Flags
 PICLDFLAGS= -Wl,-rpath-link=./ 
-PIC_LD=ld
 
 # C run time startup
 CRT0=
@@ -65,22 +64,16 @@ TMPSPECENV=$(VCSTMPSPECENV)
 CC=$(TMPSPECENV) $(VCS_CC) $(TMPSPECARG)
 
 # C flags for compilation
-CFLAGS=$(STDLIB)-w  -pipe -fPIC -O -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include   
+CFLAGS=-w  -pipe -fPIC -O -I/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/include   
 
-CFLAGS_O0=-w  -pipe -fPIC -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include -O0  -fno-strict-aliasing -fno-optimize-sibling-calls   
+CFLAGS_O0=-w  -pipe -fPIC -I/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/include -O0  -fno-strict-aliasing   
 
-CFLAGS_CG=-w  -pipe -fPIC -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include -O  -fno-strict-aliasing -fno-optimize-sibling-calls   
+CFLAGS_CG=-w  -pipe -fPIC -I/home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/include -O  -fno-strict-aliasing   
 
-CFLAGS_CG_CLIB=-w  -pipe -fPIC -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include -O  -fno-strict-aliasing -fno-optimize-sibling-calls   
-
-CFLAGS_RMAR=-w  -pipe -fPIC -I/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//include -O  -fno-strict-aliasing -fno-optimize-sibling-calls   
-
-CFLAGS_CG+=$(STDLIB)
-CFLAGS_CG_CLIB+=$(STDLIB)
-CFLAGS_O0+=$(STDLIB)
 LD_PARTIAL_LOADER=ld
 # Partial linking
 LD_PARTIAL=$(LD_PARTIAL_LOADER) -r -o
+ASFLAGS=
 LIBS=-lvirsim -lerrorinf -lsnpsmalloc -lvfs 
 # Note: if make gives you errors about include, either get gmake, or
 # replace the following line with the contents of the file filelist,
@@ -102,7 +95,7 @@ clobber : clean
 	rm -f $(PRODUCT) $(PRODUCT_TIMESTAMP) 
 
 picclean : 
-	rm -f _cuarc*.so _csrc*.so pre_vcsobj_*.so share_vcsobj_*.so
+	rm -f _csrc*.so pre_vcsobj_*.so share_vcsobj_*.so
 	@rm -f $(PRODUCT).daidir/_[0-9]*_archive_*.so 2>/dev/null
 
 product_clean_order : 
@@ -112,15 +105,12 @@ product_clean_order :
 product_order : $(PRODUCT)
 
 $(PRODUCT_TIMESTAMP) : product_clean_order
-	-if [ -x $(PRODUCT) ]; then chmod a-x $(PRODUCT); fi
-	$(LD) $(CRT0) -o $(PRODUCT) $(LLVM_FLAGS) $(STDLIB) $(PRE_LDFLAGS) $(STRIPFLAGS) $(PCLDFLAGS) $(LDFLAGS) $(PICLDFLAGS) $(OBJS)  $(LIBS)   $(RUNTIME) -Wl,-whole-archive $(VCSMXSAIF) $(VCSUCLI) $(PLILIBS) $(DECLIBS) $(BALIBS) -Wl,-no-whole-archive     $(LINK_TB) $(DPI_STUB_OBJS) $(PLI_STUB_OBJS)   $(VCS_SAVE_RESTORE_OBJ) $(SYSLIBS) $(CRTN)
+	-if [ -x $(PRODUCT) ]; then chmod -x $(PRODUCT); fi
+	$(LD) $(CRT0) -o $(PRODUCT) $(PRE_LDFLAGS) $(STRIPFLAGS) $(PCLDFLAGS) $(LDFLAGS) $(PICLDFLAGS) $(OBJS)  $(LIBS)   $(RUNTIME) -Wl,-whole-archive $(VCSUCLI) -Wl,-no-whole-archive     $(LINK_TB) $(DPI_STUB_OBJS) $(PLI_STUB_OBJS)   $(VCS_SAVE_RESTORE_OBJ) $(SYSLIBS) $(CRTN)
 	@rm -f csrc[0-9]*.o
-	@rm -f cuarc[0-9]*.o
-	@rm -f cuarcall.o
-	@rm -f localsym.txt
 	@touch $(PRODUCT_TIMESTAMP)
 	@-if [ -d ./objs ]; then find ./objs -type d -empty -delete; fi
 
-$(PRODUCT) :  $(LD_VERSION_CHECK)  $(OBJS) $(DOTLIBS) $(DPI_STUB_OBJS) $(PLI_STUB_OBJS) $(CMODLIB) $(SYSC_STUB_LIB) $(DPI_ALLOW_MAIN_SO)  /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvcsnew.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libsimprofile.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libuclinative.so /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/vcs_tls.o /share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//linux64/lib/libvcsucli.so  $(VCS_SAVE_RESTORE_OBJ) 
+$(PRODUCT) :  $(LD_VERSION_CHECK)  $(OBJS) $(DOTLIBS) $(DPI_STUB_OBJS) $(PLI_STUB_OBJS) $(CMODLIB)  /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/libvcsnew.so /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/libsimprofile.so /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/libuclinative.so /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/vcs_tls.o /home/ff/eecs151/hammer-tools/synopsys/vcs/P-2019.06/linux64/lib/libvcsucli.so  $(VCS_SAVE_RESTORE_OBJ) 
 	@touch $(PRODUCT)
 

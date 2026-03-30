@@ -5,8 +5,6 @@
 extern "C" {
 #endif
 
-#include <stdlib.h>
-
 #ifndef __DO_RMAHDR_
 #include "rmar0.h"
 #endif /*__DO_RMAHDR_*/

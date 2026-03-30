@@ -1,9 +1,7 @@
 rc file Version 1.0
 
 [Design]
-COMPILE_PATH=/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/test_env
-VCS_HOME=/share/instsww/synopsys-new/vcs/T-2022.06-SP2-9//
-VERDI_HOME=
+COMPILE_PATH=/home/aa/users/cs199-cbj/Documents/bcp-hw-accelerator/test_env
 SystemC=FALSE
 UUM=FALSE
 KDB=FALSE

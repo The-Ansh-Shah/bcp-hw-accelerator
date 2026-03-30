@@ -1,0 +1,16 @@
+# VCS compiled simulation binary
+simv
+
+# VCS build artifacts
+simv.daidir/
+csrc/
+DVEfiles/
+
+# UCI license key
+ucli.key
+
+# Waveform dumps
+*.vpd
+
+# Synopsys VCS lint/log files
+*.log
