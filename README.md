@@ -17,6 +17,10 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   ├── sample_counter.v       # Simple 4-bit counter
 │   ├── sample_counter_tb.v    # Testbench for sample counter
 │   └── Makefile               # Compile & run the sample
+├── sim/                # HW-BCP-only simulation sandbox
+│   ├── src/hw_bcp.sv        # Barebones HW-BCP skeleton (SV)
+│   ├── tb/tb_hw_bcp.sv      # HW-BCP skeleton testbench (SV)
+│   └── Makefile             # Compile & run the HW-BCP sandbox
 ├── tests/              # Test CNF instances
 ├── output/             # Simulation logs and waveforms
 ├── Makefile            # Build and simulation flow
@@ -25,13 +29,15 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 
 ## Build & Simulation
 
-Requires Synopsys VCS. On the Berkeley EECS instructional machines (`eda-[1-4].eecs.berkeley.edu`), source the tool setup first:
+Requires Synopsys VCS.
+
+On the Berkeley EECS instructional machines (`eda-[1-4].eecs.berkeley.edu`), source the tool setup first:
 
 ```bash
 source /home/ff/eecs151/eecs151source.bashrc
 ```
 
-### Verify your environment (`test_env/`)
+### Environment sanity check (`test_env/`)
 
 The `test_env/` directory contains a simple 4-bit counter and testbench to confirm VCS works. The Makefile sources the environment automatically, so no manual setup is needed.
 
@@ -48,23 +54,23 @@ dve -vpd waves.vpd &
 
 Run `make clean` to remove all build artifacts.
 
-### HW-BCP-only simulation (`sim/`)
+### HW-BCP-only sandbox (`sim/`)
 
-`test_env/` is just an environment sanity check. For HW-BCP-only work, use `sim/`, which builds/runs only the barebones HW-BCP skeleton (with placeholder CAM/SRAM/eval interfaces).
+`sim/` is for iterating on the HW-BCP skeleton only (with placeholder CAM/SRAM/eval interfaces). It is intentionally separate from the integrated solver flow.
 
 ```bash
 cd sim
 make clean && make run
 ```
 
-Waveforms are dumped via `+vcdplusfile=waves.vpd`, but VCS may emit `vcdplus.vpd` depending on configuration. To view whichever file was produced:
+Waveforms are requested via `+vcdplusfile=waves.vpd`, but VCS may emit `vcdplus.vpd` depending on configuration. To view whichever file was produced:
 
 ```bash
 ls *.vpd
 dve -vpd vcdplus.vpd &
 ```
 
-### Commands (main project)
+### Integrated solver commands (main project)
 
 | Command | Description |
 |---|---|
