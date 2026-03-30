@@ -18,7 +18,7 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   ├── sample_counter_tb.v    # Testbench for sample counter
 │   └── Makefile               # Compile & run the sample
 ├── sim/                # HW-BCP-only simulation sandbox
-│   ├── src/hw_bcp.sv        # Barebones HW-BCP skeleton (SV)
+│   ├── (uses ../src/hw_bcp.sv)
 │   ├── tb/tb_hw_bcp.sv      # HW-BCP skeleton testbench (SV)
 │   └── Makefile             # Compile & run the HW-BCP sandbox
 ├── tests/              # Test CNF instances

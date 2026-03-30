@@ -2,7 +2,7 @@
 SHELL = /bin/bash
 ENV   = source ../eecs151source.bashrc &&
 
-SRC_DIR = src
+SRC_DIR = ../src
 TB_DIR  = tb
 
 SRCS = $(SRC_DIR)/hw_bcp.sv
@@ -28,5 +28,8 @@ run: $(SIMV)
 	$(ENV) ./$(SIMV) +vcdplusfile=waves.vpd
 
 clean:
-	rm -rf $(SIMV) $(SIMV).daidir csrc ucli.key DVEfiles *.vpd *.vcd *.log
+	# NFS can leave behind .nfs* files that make `rm -rf DVEfiles` fail.
+	rm -rf $(SIMV) $(SIMV).daidir csrc ucli.key *.vpd *.vcd *.log
+	rm -rf DVEfiles/* 2>/dev/null || true
+	rmdir DVEfiles 2>/dev/null || true
 
