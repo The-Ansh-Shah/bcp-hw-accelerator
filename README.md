@@ -48,6 +48,22 @@ dve -vpd waves.vpd &
 
 Run `make clean` to remove all build artifacts.
 
+### HW-BCP-only simulation (`sim/`)
+
+`test_env/` is just an environment sanity check. For HW-BCP-only work, use `sim/`, which builds/runs only the barebones HW-BCP skeleton (with placeholder CAM/SRAM/eval interfaces).
+
+```bash
+cd sim
+make clean && make run
+```
+
+Waveforms are dumped via `+vcdplusfile=waves.vpd`, but VCS may emit `vcdplus.vpd` depending on configuration. To view whichever file was produced:
+
+```bash
+ls *.vpd
+dve -vpd vcdplus.vpd &
+```
+
 ### Commands (main project)
 
 | Command | Description |
@@ -59,7 +75,7 @@ Run `make clean` to remove all build artifacts.
 
 ## Team
 
-- **Ansh Shah**
-- **Evan Wong**
+- **Ansh Shah | University of California, Berkeley**
+- **Evan Wong | University of California, Berkeley**
 
-UC Berkeley — Spring 2025
+UC Berkeley — Spring 2026
