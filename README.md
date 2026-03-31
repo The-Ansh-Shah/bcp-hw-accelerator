@@ -11,7 +11,7 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   ├── vsids.v             # VSIDS decision heuristic logic
 │   ├── clause_database.v   # Clause storage and management
 │   ├── sat_solver_top.v    # Top-level integration
-│   └── hw_bcp.sv           # Barebones HW-BCP skeleton (SV)
+│   └── hw_bcp.v            # Barebones HW-BCP skeleton (Verilog)
 ├── tb/                 # Testbenches
 │   └── sat_solver_tb.v     # Main simulation testbench
 ├── test_env/           # Environment sanity check (sample VCS flow)
@@ -20,7 +20,7 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   └── Makefile               # Compile & run the sample
 ├── sim/                # HW-BCP-only simulation sandbox
 │   ├── tb/tb_hw_bcp.sv      # HW-BCP skeleton testbench (SV)
-│   └── Makefile             # Compile & run (builds against ../src/hw_bcp.sv)
+│   └── Makefile             # Compile & run (builds against ../src/hw_bcp.v)
 ├── tests/              # Test CNF instances
 ├── output/             # Simulation logs and waveforms
 ├── Makefile            # Build and simulation flow
@@ -56,7 +56,7 @@ Run `make clean` to remove all build artifacts.
 
 ### HW-BCP-only sandbox (`sim/`)
 
-`sim/` is for iterating on the HW-BCP skeleton only (with placeholder CAM/SRAM/eval interfaces). The RTL lives in `src/hw_bcp.sv`; `sim/` just provides a focused testbench + Makefile.
+`sim/` is for iterating on the HW-BCP skeleton only (with placeholder CAM/SRAM/eval interfaces). The RTL lives in `src/hw_bcp.v`; `sim/` just provides a focused testbench + Makefile.
 
 ```bash
 cd sim

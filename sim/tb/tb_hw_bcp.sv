@@ -1,7 +1,6 @@
 `timescale 1ns/1ps
 
 module tb_hw_bcp;
-  import hw_bcp_pkg::*;
 
   localparam int unsigned VAR_W         = 6;
   localparam int unsigned LIT_W         = VAR_W + 1;
@@ -79,7 +78,7 @@ module tb_hw_bcp;
   // Simple always-ready consumer for unit props (testbench can add behavior later)
   assign up_ready = 1'b1;
 
-  // Use the provided sim stubs in hw_bcp.sv by compiling with +define+HW_BCP_SIM_STUBS
+  // Use the provided sim stubs in hw_bcp.v by compiling with +define+HW_BCP_SIM_STUBS
   stub_trail #(
     .LIT_W(LIT_W), .DEPTH(32), .PTR_W(TRAIL_PTR_W)
   ) u_trail (

@@ -5,7 +5,7 @@ ENV   = source ../eecs151source.bashrc &&
 SRC_DIR = ../src
 TB_DIR  = tb
 
-SRCS = $(SRC_DIR)/hw_bcp.sv
+SRCS = $(SRC_DIR)/hw_bcp.v
 TB   = $(TB_DIR)/tb_hw_bcp.sv
 SIMV = simv
 
