@@ -11,7 +11,9 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   ├── vsids.v             # VSIDS decision heuristic logic
 │   ├── clause_database.v   # Clause storage and management
 │   ├── sat_solver_top.v    # Top-level integration
-│   └── hw_bcp.v            # Barebones HW-BCP skeleton (Verilog)
+│   ├── hw_bcp_defs.vh      # HW-BCP shared `defines (CE status, literals, FSM states)
+│   ├── hw_bcp_propagate.v  # HW-BCP BCP FSM (trail → CAM → clause eval → SRAM → implications)
+│   └── hw_bcp_sim_stubs.v  # Optional simulation stubs for CAM / SRAM / CE / trail (ifdef)
 ├── tb/                 # Testbenches
 │   └── sat_solver_tb.v     # Main simulation testbench
 ├── test_env/           # Environment sanity check (sample VCS flow)
@@ -20,7 +22,7 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 │   └── Makefile               # Compile & run the sample
 ├── sim/                # HW-BCP-only simulation sandbox
 │   ├── tb/tb_hw_bcp.sv      # HW-BCP skeleton testbench (SV)
-│   └── Makefile             # Compile & run (builds against ../src/hw_bcp.v)
+│   └── Makefile             # Compile & run (see HW-BCP sandbox below)
 ├── tests/              # Test CNF instances
 ├── output/             # Simulation logs and waveforms
 ├── Makefile            # Build and simulation flow
@@ -56,7 +58,17 @@ Run `make clean` to remove all build artifacts.
 
 ### HW-BCP-only sandbox (`sim/`)
 
-`sim/` is for iterating on the HW-BCP skeleton only (with placeholder CAM/SRAM/eval interfaces). The RTL lives in `src/hw_bcp.v`; `sim/` just provides a focused testbench + Makefile.
+`sim/` is for iterating on the HW-BCP skeleton only, using placeholder CAM, SRAM, clause-eval, and trail models so the control FSM can be simulated without full peripheral RTL.
+
+**RTL layout (`src/`):**
+
+| File | Purpose |
+|------|---------|
+| `hw_bcp_defs.vh` | Included by the other HW-BCP sources: clause-eval status codes, 2-bit literal values, and FSM state encodings. |
+| `hw_bcp_propagate.v` | `hw_bcp_propagate` module: Boolean Constraint Propagation FSM and port-level handshakes to trail, CAM, SRAM, clause evaluator, conflict, and unit-propagation outputs. |
+| `hw_bcp_sim_stubs.v` | Combinational/behavioral stubs (`stub_trail`, `stub_cam`, `stub_sram_litval`, `stub_clause_eval`), compiled only when the Verilog macro `HW_BCP_SIM_STUBS` is defined, so real CAM/SRAM/CE/trail RTL can replace them in other flows. |
+
+The `sim/Makefile` compiles `hw_bcp_propagate.v` and `hw_bcp_sim_stubs.v`, adds `+incdir+../src` for `` `include "hw_bcp_defs.vh" ``, and defines `HW_BCP_SIM_STUBS` so the stubs are elaborated. The testbench is `sim/tb/tb_hw_bcp.sv` (top `tb_hw_bcp`).
 
 ```bash
 cd sim
