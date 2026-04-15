@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+`include "hw_bcp_defs.vh"
 
 // ============================================================================
 // tb_hw_bcp — HW-BCP propagate FSM testbench
@@ -9,12 +10,26 @@
 //
 // The stock stub_cam never asserts r_valid, so the FSM would stick in CAM_STREAM.
 // This file uses tb_cam_empty_watchlist instead: after each CAM query handshake it
-// pulses one clause read with r_last=1 (empty watch list for that variable), which
-// matches how the skeleton flow is meant to complete.
+// pulses one clause read with r_last=1 (one-clause watch list per variable), which
+// lets the FSM exit CAM_STREAM and evaluate exactly one clause per trail literal.
+//
+// Behavioral coverage:
+//   Test 1 — idle outputs before start (busy=0, done=0)
+//   Test 2 — zero-length trail completes without pop
+//   Test 3 — n-literal trail, all clauses evaluate to DONE (no unit props emitted)
+//   Test 4 — done holds while start is high; deasserts once start drops
+//   Test 5 — unit propagation: CE returns UNIT → up_valid asserted with correct lit
+//   Test 6 — conflict detection: CE returns CONFLICT → conflict_valid asserted
+//
+// Cycle count is reported for every test completion.  Module-level monitors
+// latch up_valid and conflict_valid between clear_monitors() calls so each test
+// can assert the correct absence or presence of those outputs.
 // ============================================================================
 
-// Emits a single (r_valid,r_last) beat after each CAM query accept so the DUT can
-// leave CAM_STREAM and return to the trail pop loop.
+// ----------------------------------------------------------------------------
+// Emits a single (r_valid, r_last) beat after each CAM query accept so the
+// DUT can leave CAM_STREAM and return to the trail pop loop.
+// ----------------------------------------------------------------------------
 module tb_cam_empty_watchlist #(
   parameter int unsigned VAR_W    = 6,
   parameter int unsigned CLAUSE_W = 6
@@ -51,6 +66,73 @@ module tb_cam_empty_watchlist #(
   assign r_last   = 1'b1;
 endmodule
 
+// ----------------------------------------------------------------------------
+// tb_ce_prog — programmable clause-evaluator stub.
+//
+// Returns prog_status (and associated unit info) for every accepted CE request.
+// Response is registered so it remains stable after req_valid drops in the
+// DUT's S_CE_WAIT state (split-transaction CE interface, same as stub_clause_eval).
+//
+// Usage in tests:
+//   prog_status = `CLAUSE_DONE     → no action (default)
+//   prog_status = `CLAUSE_UNIT     → FSM emits unit implication (up_valid)
+//   prog_status = `CLAUSE_CONFLICT → FSM reports conflict (conflict_valid)
+// ----------------------------------------------------------------------------
+module tb_ce_prog #(
+  parameter int unsigned CLAUSE_W  = 6,
+  parameter int unsigned LIT_W     = 7,
+  parameter int unsigned LITIDX_W  = 6
+) (
+  input  logic clk,
+  input  logic rst_n,
+  input  logic                   req_valid,
+  output logic                   req_ready,
+  input  logic [CLAUSE_W-1:0]    req_clause,
+  output logic                   resp_valid,
+  input  logic                   resp_ready,
+  output logic [1:0]             resp_status,
+  output logic [LIT_W-1:0]       resp_u_lit,
+  output logic [LITIDX_W-1:0]    resp_u_idx,
+  // Programming interface: configure what the next response will return
+  input  logic [1:0]             prog_status,
+  input  logic [LIT_W-1:0]       prog_u_lit,
+  input  logic [LITIDX_W-1:0]    prog_u_idx
+);
+  // Always ready to accept a request (same behaviour as stub_clause_eval).
+  assign req_ready = 1'b1;
+
+  logic        resp_valid_r;
+  logic [1:0]          resp_status_r;
+  logic [LIT_W-1:0]    resp_u_lit_r;
+  logic [LITIDX_W-1:0] resp_u_idx_r;
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      resp_valid_r  <= 1'b0;
+      resp_status_r <= `CLAUSE_DONE;
+      resp_u_lit_r  <= '0;
+      resp_u_idx_r  <= '0;
+    end else begin
+      if (resp_valid_r && resp_ready) begin
+        resp_valid_r <= 1'b0;
+      end else if (req_valid && req_ready) begin
+        resp_valid_r  <= 1'b1;
+        resp_status_r <= prog_status;
+        resp_u_lit_r  <= prog_u_lit;
+        resp_u_idx_r  <= prog_u_idx;
+      end
+    end
+  end
+
+  assign resp_valid  = resp_valid_r;
+  assign resp_status = resp_status_r;
+  assign resp_u_lit  = resp_u_lit_r;
+  assign resp_u_idx  = resp_u_idx_r;
+endmodule
+
+// ============================================================================
+// Top-level testbench
+// ============================================================================
 module tb_hw_bcp;
 
   localparam int unsigned VAR_W         = 6;
@@ -98,6 +180,11 @@ module tb_hw_bcp;
   logic [LIT_W-1:0] ce_u_lit;
   logic [LITIDX_W-1:0] ce_u_idx;
 
+  // CE programming inputs (drive tb_ce_prog)
+  logic [1:0]          ce_prog_status;
+  logic [LIT_W-1:0]    ce_prog_u_lit;
+  logic [LITIDX_W-1:0] ce_prog_u_idx;
+
   // Outputs
   logic conflict_valid;
   logic [CLAUSE_W-1:0] conflict_clause;
@@ -106,10 +193,46 @@ module tb_hw_bcp;
   logic [REASON_W-1:0] up_reason_clause;
   logic [LITIDX_W-1:0] up_lit_idx;
 
+  // Test bookkeeping
   int unsigned tests_passed;
   int unsigned tests_failed;
 
-  // Decode DUT FSM state for messages (must match hw_bcp_defs.vh / hw_bcp_propagate.v).
+  // -------------------------------------------------------------------------
+  // Cycle counter and per-test signal monitors.
+  // clear_monitors() resets the latches; always block sets them.
+  // -------------------------------------------------------------------------
+  int unsigned          cycle_count;
+  logic                 up_valid_seen;
+  logic [LIT_W-1:0]     up_lit_latched;
+  logic                 conflict_seen;
+  logic [CLAUSE_W-1:0]  conflict_clause_latched;
+
+  always @(posedge clk) begin
+    cycle_count++;
+    if (up_valid && up_ready) begin
+      up_valid_seen  <= 1'b1;
+      up_lit_latched <= up_lit;
+    end
+    if (conflict_valid) begin
+      conflict_seen           <= 1'b1;
+      conflict_clause_latched <= conflict_clause;
+    end
+  end
+
+  // Display notable events as they occur.
+  always @(posedge clk) begin
+    if (conflict_valid)
+      $display("  [cyc=%0d t=%0t] CONFLICT clause=%0d", cycle_count, $time, conflict_clause);
+    if (up_valid && up_ready)
+      $display("  [cyc=%0d t=%0t] UNIT lit=0x%0h reason=%0d idx=%0d",
+               cycle_count, $time, up_lit, up_reason_clause, up_lit_idx);
+    if (done)
+      $display("  [cyc=%0d t=%0t] DONE", cycle_count, $time);
+  end
+
+  // -------------------------------------------------------------------------
+  // Decode DUT FSM state for messages (must match hw_bcp_defs.vh).
+  // -------------------------------------------------------------------------
   function automatic string fsm_state_str(input logic [3:0] s);
     case (s)
       4'd0:  return "S_IDLE";
@@ -136,6 +259,9 @@ module tb_hw_bcp;
              fsm_state_str(dut.state));
   endtask
 
+  // -------------------------------------------------------------------------
+  // DUT
+  // -------------------------------------------------------------------------
   hw_bcp_propagate #(
     .VAR_W(VAR_W),
     .LIT_W(LIT_W),
@@ -161,6 +287,10 @@ module tb_hw_bcp;
 
   assign up_ready = 1'b1;
 
+  // -------------------------------------------------------------------------
+  // Stub instances
+  // -------------------------------------------------------------------------
+
   // Trail memory model (synchronous reset) — see hw_bcp_sim_stubs.v
   stub_trail #(
     .LIT_W(LIT_W), .DEPTH(32), .PTR_W(TRAIL_PTR_W)
@@ -173,6 +303,7 @@ module tb_hw_bcp;
     .pop_lit(trail_pop_lit)
   );
 
+  // CAM: one clause per variable query, r_last=1 (single-entry watch list)
   tb_cam_empty_watchlist #(
     .VAR_W(VAR_W), .CLAUSE_W(CLAUSE_W)
   ) u_cam (
@@ -186,6 +317,7 @@ module tb_hw_bcp;
     .r_last(cam_r_last)
   );
 
+  // SRAM: reads always return VALU (unassigned); writes always acked
   stub_sram_litval #(
     .LIT_W(LIT_W)
   ) u_sram (
@@ -202,7 +334,8 @@ module tb_hw_bcp;
     .wr_val(sram_wr_val)
   );
 
-  stub_clause_eval #(
+  // CE: programmable — set ce_prog_status before each test
+  tb_ce_prog #(
     .CLAUSE_W(CLAUSE_W), .LIT_W(LIT_W), .LITIDX_W(LITIDX_W)
   ) u_ce (
     .clk, .rst_n,
@@ -213,7 +346,10 @@ module tb_hw_bcp;
     .resp_ready(ce_resp_ready),
     .resp_status(ce_status),
     .resp_u_lit(ce_u_lit),
-    .resp_u_idx(ce_u_idx)
+    .resp_u_idx(ce_u_idx),
+    .prog_status(ce_prog_status),
+    .prog_u_lit(ce_prog_u_lit),
+    .prog_u_idx(ce_prog_u_idx)
   );
 
   // --------------------------------------------------------------------------
@@ -229,8 +365,8 @@ module tb_hw_bcp;
   // DUT and stub_trail registers exit reset on the same clocking convention.
   // --------------------------------------------------------------------------
   task automatic apply_reset();
-    rst_n = 1'b0;
-    start = 1'b0;
+    rst_n      = 1'b0;
+    start      = 1'b0;
     qhead_init = '0;
     trail_size = '0;
     repeat (5) @(posedge clk);
@@ -239,18 +375,29 @@ module tb_hw_bcp;
   endtask
 
   // --------------------------------------------------------------------------
-  // Wait until done or cycle timeout. cycles_used = clocks until done (1-based),
-  // or max_cycles if timed out.
+  // Clear per-test monitors.  Waits one posedge + 1 ps to ensure NBA updates
+  // from the current edge have settled before overwriting with blocking assigns.
+  // --------------------------------------------------------------------------
+  task automatic clear_monitors();
+    @(posedge clk); #1;
+    up_valid_seen = 1'b0;
+    conflict_seen = 1'b0;
+  endtask
+
+  // --------------------------------------------------------------------------
+  // Wait until done or cycle timeout.
+  //   ok         — 1 if done asserted within max_cycles, else 0
+  //   cycles_used — cycles until done (1-based), or max_cycles on timeout
   // --------------------------------------------------------------------------
   task automatic wait_done_timeout(
-    input int unsigned max_cycles,
-    output bit ok,
+    input  int unsigned max_cycles,
+    output bit          ok,
     output int unsigned cycles_used
   );
     int unsigned cyc;
-    ok = 1'b0;
+    ok         = 1'b0;
     cycles_used = max_cycles;
-    cyc  = 0;
+    cyc = 0;
     while (cyc < max_cycles) begin
       @(posedge clk);
       cyc++;
@@ -260,7 +407,7 @@ module tb_hw_bcp;
                  cyc, done, busy, trail_pop_req, cam_q_valid, ce_valid);
 `endif
       if (done) begin
-        ok = 1'b1;
+        ok          = 1'b1;
         cycles_used = cyc;
         break;
       end
@@ -278,30 +425,30 @@ module tb_hw_bcp;
   // --------------------------------------------------------------------------
   task automatic test_idle_before_start();
     $display("\n--- Test 1: idle outputs before start ---");
-    $display("  expected: busy=0, done=0 (no run in progress)");
+    $display("  expected: busy=0, done=0");
     if (busy !== 1'b0 || done !== 1'b0) begin
       $error("FAIL: got busy=%b done=%b (start=%b)", busy, done, start);
       print_dut_snapshot("fail");
       tests_failed++;
     end else begin
-      $display("PASS: got busy=%b done=%b", busy, done);
+      $display("PASS: busy=%b done=%b", busy, done);
       tests_passed++;
     end
   endtask
 
   // --------------------------------------------------------------------------
-  // Test 2: Zero-length trail (trail_size == qhead_init conceptual window).
-  // With qhead_init=0 and trail_size=0, POP_REQ sees qhead < trail_size false
+  // Test 2: Zero-length trail — POP_REQ sees qhead >= trail_size immediately
   // and the FSM should jump straight to DONE without popping.
   // --------------------------------------------------------------------------
   task automatic test_zero_trail_immediate_done();
-    bit ok;
+    bit          ok;
     int unsigned cyc_done;
     $display("\n--- Test 2: zero trail completes without pop ---");
     trail_size = TRAIL_PTR_W'(0);
     qhead_init = TRAIL_PTR_W'(0);
-    $display("  stimulus: trail_size=%0d qhead_init=%0d (nothing to pop)", trail_size, qhead_init);
-    $display("  expected: done=1 within %0d cycles, then busy=0 (finished, idle)", TIMEOUT_CYCLES);
+    ce_prog_status = `CLAUSE_DONE;
+    $display("  stimulus: trail_size=%0d qhead_init=%0d", trail_size, qhead_init);
+    $display("  expected: done=1 within %0d cycles, busy=0", TIMEOUT_CYCLES);
     pulse_start();
     wait_done_timeout(TIMEOUT_CYCLES, ok, cyc_done);
     if (!ok) begin
@@ -313,37 +460,59 @@ module tb_hw_bcp;
       $error("FAIL: expected busy=0 after done; got busy=%b done=%b", busy, done);
       tests_failed++;
     end else begin
-      $display("PASS: got done=1 after %0d posedge(s), busy=%b (matches expected)", cyc_done, busy);
+      $display("PASS: done=1 after %0d cycle(s), busy=%b", cyc_done, busy);
       tests_passed++;
     end
-    // Wait until start can be re-armed (DUT returns to IDLE when start drops)
     @(posedge clk);
     while (start !== 1'b0) @(posedge clk);
     repeat (2) @(posedge clk);
   endtask
 
   // --------------------------------------------------------------------------
-  // Test 3: Several trail literals — each needs CAM empty list + CE DONE; stub
-  // trail pops literals from mem[0..n-1]. Expect run to finish with done.
+  // Test 3: n trail literals, CE always returns CLAUSE_DONE.
+  // Liveness check: run completes within timeout.
+  // Behavioral check: up_valid must never be asserted (no unit clause → no
+  //   implication); conflict_valid must never be asserted.
   // --------------------------------------------------------------------------
   task automatic test_nonempty_trail_runs_to_done(input int unsigned n);
-    bit ok;
+    bit          ok;
     int unsigned cyc_done;
-    $display("\n--- Test 3: nonempty trail (n=%0d literals) runs to done ---", n);
+    $display("\n--- Test 3 (n=%0d): trail runs to done, no unit/conflict expected ---", n);
+    clear_monitors();
     init_trail_mem(n);
-    trail_size = TRAIL_PTR_W'(n);
-    qhead_init = TRAIL_PTR_W'(0);
-    $display("  stimulus: trail_size=%0d qhead_init=%0d (pop n literals, CAM+CE per lit)", trail_size, qhead_init);
-    $display("  expected: done=1 within %0d cycles after start (propagation finished)", TIMEOUT_CYCLES);
+    trail_size     = TRAIL_PTR_W'(n);
+    qhead_init     = TRAIL_PTR_W'(0);
+    ce_prog_status = `CLAUSE_DONE;
+    $display("  stimulus: trail_size=%0d, ce=CLAUSE_DONE", n);
+    $display("  expected: done=1 within %0d cycles; up_valid=0 throughout; conflict_valid=0 throughout", TIMEOUT_CYCLES);
     pulse_start();
     wait_done_timeout(TIMEOUT_CYCLES, ok, cyc_done);
+    // Check 1: liveness — did the run complete?
     if (!ok) begin
-      $error("FAIL: expected done=1 within %0d cycles (n=%0d); got done=%b after %0d cycles | busy=%b",
-             TIMEOUT_CYCLES, n, done, cyc_done, busy);
+      $error("FAIL (n=%0d): expected done=1 within %0d cycles; got done=%b after %0d cycles | busy=%b",
+             n, TIMEOUT_CYCLES, done, cyc_done, busy);
       print_dut_snapshot("timeout");
       tests_failed++;
     end else begin
-      $display("PASS: got done=1 after %0d posedge(s) (n=%0d trail literals as expected)", cyc_done, n);
+      $display("PASS (n=%0d): done=1 after %0d cycle(s)", n, cyc_done);
+      tests_passed++;
+    end
+    // Check 2: no unit implication emitted (CE is CLAUSE_DONE → FSM never reaches EMIT_UP)
+    if (up_valid_seen) begin
+      $error("FAIL (n=%0d): up_valid was asserted (up_lit=0x%0h) but CE only returns DONE — no unit prop should occur",
+             n, up_lit_latched);
+      tests_failed++;
+    end else begin
+      $display("PASS (n=%0d): up_valid never asserted (correct for all-DONE CE)", n);
+      tests_passed++;
+    end
+    // Check 3: no conflict (CE is CLAUSE_DONE → FSM never reaches REPORT_CONFL)
+    if (conflict_seen) begin
+      $error("FAIL (n=%0d): conflict_valid was asserted (clause=%0d) but CE only returns DONE — no conflict should occur",
+             n, conflict_clause_latched);
+      tests_failed++;
+    end else begin
+      $display("PASS (n=%0d): conflict_valid never asserted (correct for all-DONE CE)", n);
       tests_passed++;
     end
     @(posedge clk);
@@ -352,20 +521,21 @@ module tb_hw_bcp;
   endtask
 
   // --------------------------------------------------------------------------
-  // Test 4: With start held high, FSM reaches S_DONE (done=1). It stays there
-  // until start deasserts; then on the next cycle the FSM can return to IDLE
-  // (done=0). This matches synchronous-reset control: re-arm by dropping start.
+  // Test 4: With start held high, FSM reaches S_DONE (done=1) and holds it
+  // until start deasserts.  After start=0 + one posedge the FSM returns to
+  // IDLE and done=0.
   // --------------------------------------------------------------------------
   task automatic test_done_requires_start_low_to_re_idle();
-    bit ok;
+    bit          ok;
     int unsigned cyc_done;
-    logic done_sample;
-    $display("\n--- Test 4: start must deassert to return from done ---");
+    logic        done_sample;
+    $display("\n--- Test 4: done holds while start=1; deasserts after start=0 ---");
     $display("  stimulus: trail_size=0, start held 1 until done, then start=0");
-    $display("  expected: (a) done=1 in S_DONE with start=1; (b) after start=0, next posedge + #1ps, done=0 (idle)");
-    trail_size = TRAIL_PTR_W'(0);
-    qhead_init = TRAIL_PTR_W'(0);
-    start      = 1'b1;
+    $display("  expected: (a) done=1 in S_DONE with start=1; (b) done=0 one posedge after start=0");
+    trail_size     = TRAIL_PTR_W'(0);
+    qhead_init     = TRAIL_PTR_W'(0);
+    ce_prog_status = `CLAUSE_DONE;
+    start          = 1'b1;
     @(posedge clk);
     wait_done_timeout(TIMEOUT_CYCLES, ok, cyc_done);
     if (!ok) begin
@@ -381,34 +551,154 @@ module tb_hw_bcp;
       tests_failed++;
       return;
     end
-    $display("  checkpoint: got done=1 after %0d clk(s) with start=1 (expected)", cyc_done);
-    // Deassert start, then wait one posedge + 1ps so NBA updates to state
-    // and assign done= (state==S_DONE) settle before sampling (VCS ordering).
+    $display("  checkpoint: done=1 after %0d cycle(s) with start=1 (expected)", cyc_done);
+    // Deassert start; sample done one posedge later (+ 1 ps to clear NBA updates).
     start = 1'b0;
     @(posedge clk);
     #1;
     done_sample = done;
     if (done_sample !== 1'b0) begin
-      $error("FAIL: expected done=0, busy=0, state=S_IDLE after start=0 + 1 posedge + #1ps sample");
-      $error("      got done=%b, busy=%b, start=%b, state=%s",
-             done_sample, busy, start, fsm_state_str(dut.state));
+      $error("FAIL: expected done=0 one posedge after start=0; got done=%b busy=%b state=%s",
+             done_sample, busy, fsm_state_str(dut.state));
       print_dut_snapshot("fail test 4");
       tests_failed++;
     end else begin
-      $display("PASS: expected done=0, busy=0 in idle; got done=%b busy=%b start=%b",
-               done, busy, start);
+      $display("PASS: done=0, busy=0 after start deasserts (FSM returned to IDLE)");
       tests_passed++;
     end
   endtask
 
+  // --------------------------------------------------------------------------
+  // Test 5: Unit propagation.
+  //   - 1 trail literal; CE returns CLAUSE_UNIT with a specific unit literal.
+  //   - SRAM stub always returns VALU (unassigned), so FSM reaches EMIT_UP.
+  //   - Expected: up_valid asserted with up_lit == expected literal; no conflict.
+  // --------------------------------------------------------------------------
+  task automatic test_unit_propagation();
+    logic [LIT_W-1:0]    exp_lit;
+    logic [LITIDX_W-1:0] exp_idx;
+    bit          ok;
+    int unsigned cyc_done;
+    exp_lit = LIT_W'('h0F);   // var=15, polarity=0 (arbitrary valid literal)
+    exp_idx = LITIDX_W'(2);
+    $display("\n--- Test 5: unit propagation emits up_valid ---");
+    clear_monitors();
+    init_trail_mem(1);
+    trail_size     = TRAIL_PTR_W'(1);
+    qhead_init     = TRAIL_PTR_W'(0);
+    ce_prog_status = `CLAUSE_UNIT;
+    ce_prog_u_lit  = exp_lit;
+    ce_prog_u_idx  = exp_idx;
+    $display("  stimulus: trail_size=1, ce=CLAUSE_UNIT unit_lit=0x%0h idx=%0d", exp_lit, exp_idx);
+    $display("  expected: up_valid asserted once with up_lit=0x%0h; then done; no conflict", exp_lit);
+    pulse_start();
+    wait_done_timeout(TIMEOUT_CYCLES, ok, cyc_done);
+    // Check 1: liveness
+    if (!ok) begin
+      $error("FAIL: expected done=1 within %0d cycles; got done=%b after %0d cycles",
+             TIMEOUT_CYCLES, done, cyc_done);
+      print_dut_snapshot("timeout");
+      tests_failed++;
+    end else begin
+      $display("PASS: done=1 after %0d cycle(s)", cyc_done);
+      tests_passed++;
+    end
+    // Check 2: up_valid was asserted with the correct literal
+    if (!up_valid_seen) begin
+      $error("FAIL: up_valid was never asserted (unit propagation expected but did not occur)");
+      tests_failed++;
+    end else if (up_lit_latched !== exp_lit) begin
+      $error("FAIL: up_lit=0x%0h, expected 0x%0h", up_lit_latched, exp_lit);
+      tests_failed++;
+    end else begin
+      $display("PASS: up_valid asserted with up_lit=0x%0h (correct)", up_lit_latched);
+      tests_passed++;
+    end
+    // Check 3: no conflict raised alongside unit
+    if (conflict_seen) begin
+      $error("FAIL: conflict_valid raised unexpectedly during unit-propagation test (clause=%0d)",
+             conflict_clause_latched);
+      tests_failed++;
+    end else begin
+      $display("PASS: no conflict raised (correct for unit-only scenario)");
+      tests_passed++;
+    end
+    // Restore CE to DONE default
+    ce_prog_status = `CLAUSE_DONE;
+    ce_prog_u_lit  = '0;
+    ce_prog_u_idx  = '0;
+    @(posedge clk);
+    while (start !== 1'b0) @(posedge clk);
+    repeat (2) @(posedge clk);
+  endtask
+
+  // --------------------------------------------------------------------------
+  // Test 6: Conflict detection.
+  //   - 1 trail literal; CE returns CLAUSE_CONFLICT.
+  //   - Expected: conflict_valid asserted; FSM goes to DONE without emitting
+  //     any unit implication (up_valid must stay low).
+  // --------------------------------------------------------------------------
+  task automatic test_conflict_detection();
+    bit          ok;
+    int unsigned cyc_done;
+    $display("\n--- Test 6: conflict detection emits conflict_valid ---");
+    clear_monitors();
+    init_trail_mem(1);
+    trail_size     = TRAIL_PTR_W'(1);
+    qhead_init     = TRAIL_PTR_W'(0);
+    ce_prog_status = `CLAUSE_CONFLICT;
+    $display("  stimulus: trail_size=1, ce=CLAUSE_CONFLICT");
+    $display("  expected: conflict_valid asserted once, then done; up_valid=0 throughout");
+    pulse_start();
+    wait_done_timeout(TIMEOUT_CYCLES, ok, cyc_done);
+    // Check 1: liveness
+    if (!ok) begin
+      $error("FAIL: expected done=1 within %0d cycles; got done=%b after %0d cycles",
+             TIMEOUT_CYCLES, done, cyc_done);
+      print_dut_snapshot("timeout");
+      tests_failed++;
+    end else begin
+      $display("PASS: done=1 after %0d cycle(s)", cyc_done);
+      tests_passed++;
+    end
+    // Check 2: conflict_valid was asserted
+    if (!conflict_seen) begin
+      $error("FAIL: conflict_valid was never asserted (conflict expected but did not occur)");
+      tests_failed++;
+    end else begin
+      $display("PASS: conflict_valid asserted (clause=%0d, correct)", conflict_clause_latched);
+      tests_passed++;
+    end
+    // Check 3: no unit implication emitted on a conflict path
+    if (up_valid_seen) begin
+      $error("FAIL: up_valid raised during conflict test (no unit prop expected; got up_lit=0x%0h)",
+             up_lit_latched);
+      tests_failed++;
+    end else begin
+      $display("PASS: up_valid never asserted (correct — conflict path does not emit implication)");
+      tests_passed++;
+    end
+    ce_prog_status = `CLAUSE_DONE;
+  endtask
+
+  // --------------------------------------------------------------------------
+  // Simulation entry point
+  // --------------------------------------------------------------------------
   initial begin
     $vcdpluson;
-    tests_passed = 0;
-    tests_failed = 0;
-
-    clk   = 1'b0;
-    rst_n = 1'b0;
-    start = 1'b0;
+    tests_passed             = 0;
+    tests_failed             = 0;
+    cycle_count              = 0;
+    up_valid_seen            = 1'b0;
+    up_lit_latched           = '0;
+    conflict_seen            = 1'b0;
+    conflict_clause_latched  = '0;
+    ce_prog_status           = `CLAUSE_DONE;
+    ce_prog_u_lit            = '0;
+    ce_prog_u_idx            = '0;
+    clk                      = 1'b0;
+    rst_n                    = 1'b0;
+    start                    = 1'b0;
 
     apply_reset();
 
@@ -423,23 +713,24 @@ module tb_hw_bcp;
     test_nonempty_trail_runs_to_done(4);
     apply_reset();
 
-    // Test 4 assumes a clean FSM (prior tests may have timed out mid-run).
+    // Test 4: requires a clean FSM state after prior tests.
     test_done_requires_start_low_to_re_idle();
+    apply_reset();
+
+    // Test 5: unit propagation
+    test_unit_propagation();
+    apply_reset();
+
+    // Test 6: conflict detection
+    test_conflict_detection();
 
     $display("\n========================================");
-    $display("Summary: %0d passed, %0d failed (5 checkpoints: idle, zero-trail, n=1, n=4, done/start)", tests_passed, tests_failed);
+    $display("Summary: %0d passed, %0d failed", tests_passed, tests_failed);
+    $display("  Tests: idle | zero-trail | nonempty(n=1) | nonempty(n=4) | done/start | unit-prop | conflict");
     $display("========================================\n");
     if (tests_failed != 0)
       $fatal(1, "One or more tests failed.");
     $finish;
   end
 
-  always @(posedge clk) begin
-    if (conflict_valid)
-      $display("[%0t] CONFLICT clause=%0d", $time, conflict_clause);
-    if (up_valid && up_ready)
-      $display("[%0t] UNIT lit=0x%0h reason=%0d idx=%0d", $time, up_lit, up_reason_clause, up_lit_idx);
-    if (done)
-      $display("[%0t] DONE", $time);
-  end
 endmodule

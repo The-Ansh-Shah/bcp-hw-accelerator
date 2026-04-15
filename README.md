@@ -6,26 +6,16 @@ Complete RTL integration of hardware Boolean Constraint Propagation (BCP) and Co
 
 ```
 ├── src/                # RTL source files (Verilog)
-│   ├── bcp_engine.v        # Boolean Constraint Propagation unit
-│   ├── cdcl_unit.v         # Conflict-Driven Clause Learning / conflict analysis
-│   ├── vsids.v             # VSIDS decision heuristic logic
-│   ├── clause_database.v   # Clause storage and management
-│   ├── sat_solver_top.v    # Top-level integration
 │   ├── hw_bcp_defs.vh      # HW-BCP shared `defines (CE status, literals, FSM states)
 │   ├── hw_bcp_propagate.v  # HW-BCP BCP FSM (trail → CAM → clause eval → SRAM → implications)
-│   └── hw_bcp_sim_stubs.v  # Optional simulation stubs for CAM / SRAM / CE / trail (ifdef)
-├── tb/                 # Testbenches
-│   └── sat_solver_tb.v     # Main simulation testbench
+│   └── hw_bcp_sim_stubs.v  # Simulation stubs for CAM / SRAM / CE / trail (ifdef HW_BCP_SIM_STUBS)
+├── sim/                # HW-BCP-only simulation sandbox
+│   ├── tb/tb_hw_bcp.sv      # HW-BCP testbench (SV)
+│   └── Makefile             # Compile & run (see HW-BCP sandbox below)
 ├── test_env/           # Environment sanity check (sample VCS flow)
 │   ├── sample_counter.v       # Simple 4-bit counter
 │   ├── sample_counter_tb.v    # Testbench for sample counter
 │   └── Makefile               # Compile & run the sample
-├── sim/                # HW-BCP-only simulation sandbox
-│   ├── tb/tb_hw_bcp.sv      # HW-BCP skeleton testbench (SV)
-│   └── Makefile             # Compile & run (see HW-BCP sandbox below)
-├── tests/              # Test CNF instances
-├── output/             # Simulation logs and waveforms
-├── Makefile            # Build and simulation flow
 └── README.md
 ```
 
@@ -56,7 +46,7 @@ dve -vpd waves.vpd &
 
 Run `make clean` to remove all build artifacts.
 
-### HW-BCP-only sandbox (`sim/`)
+### HW-BCP sandbox (`sim/`)
 
 `sim/` is for iterating on the HW-BCP skeleton only, using placeholder CAM, SRAM, clause-eval, and trail models so the control FSM can be simulated without full peripheral RTL.
 
@@ -64,9 +54,9 @@ Run `make clean` to remove all build artifacts.
 
 | File | Purpose |
 |------|---------|
-| `hw_bcp_defs.vh` | Included by the other HW-BCP sources: clause-eval status codes, 2-bit literal values, and FSM state encodings. |
+| `hw_bcp_defs.vh` | Shared `defines: clause-eval status codes, 2-bit literal values, and FSM state encodings. |
 | `hw_bcp_propagate.v` | `hw_bcp_propagate` module: Boolean Constraint Propagation FSM and port-level handshakes to trail, CAM, SRAM, clause evaluator, conflict, and unit-propagation outputs. |
-| `hw_bcp_sim_stubs.v` | Combinational/behavioral stubs (`stub_trail`, `stub_cam`, `stub_sram_litval`, `stub_clause_eval`), compiled only when the Verilog macro `HW_BCP_SIM_STUBS` is defined, so real CAM/SRAM/CE/trail RTL can replace them in other flows. |
+| `hw_bcp_sim_stubs.v` | Combinational/behavioral stubs (`stub_trail`, `stub_cam`, `stub_sram_litval`, `stub_clause_eval`), compiled only when `HW_BCP_SIM_STUBS` is defined. |
 
 The `sim/Makefile` compiles `hw_bcp_propagate.v` and `hw_bcp_sim_stubs.v`, adds `+incdir+../src` for `` `include "hw_bcp_defs.vh" ``, and defines `HW_BCP_SIM_STUBS` so the stubs are elaborated. The testbench is `sim/tb/tb_hw_bcp.sv` (top `tb_hw_bcp`).
 
@@ -75,6 +65,17 @@ cd sim
 make clean && make run
 ```
 
+**Tests covered by `tb_hw_bcp.sv`:**
+
+| Test | What it checks |
+|------|----------------|
+| 1 — idle | `busy=0`, `done=0` before `start` is ever asserted |
+| 2 — zero trail | FSM goes directly to DONE (no pop) when `trail_size == qhead_init` |
+| 3 — nonempty trail (n=1, n=4) | FSM completes all pops; `up_valid` and `conflict_valid` stay low when CE returns CLAUSE_DONE |
+| 4 — done/start | `done` holds while `start=1`; deasserts one cycle after `start=0` |
+| 5 — unit propagation | CE returns CLAUSE_UNIT → `up_valid` asserted with correct literal; no conflict |
+| 6 — conflict detection | CE returns CLAUSE_CONFLICT → `conflict_valid` asserted; no unit implication |
+
 Waveforms are requested via `+vcdplusfile=waves.vpd`, but VCS may emit `vcdplus.vpd` depending on configuration. To view whichever file was produced:
 
 ```bash
@@ -82,14 +83,7 @@ ls *.vpd
 dve -vpd vcdplus.vpd &
 ```
 
-### Integrated solver commands (main project)
-
-| Command | Description |
-|---|---|
-| `make` | Compile the design |
-| `make run test=<name>` | Run a single test |
-| `make run-all` | Run all tests in `tests/` |
-| `make clean` | Remove build artifacts |
+Run `make clean` to remove all build artifacts.
 
 ## Team
 
