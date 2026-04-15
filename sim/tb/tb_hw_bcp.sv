@@ -207,6 +207,20 @@ module tb_hw_bcp;
   logic                 conflict_seen;
   logic [CLAUSE_W-1:0]  conflict_clause_latched;
 
+  // -------------------------------------------------------------------------
+  // Stub latency tracking variables.
+  //   *_req_cyc     — cycle at which the request was accepted
+  //   *_req_pending — set when a request is in-flight, cleared on response
+  // -------------------------------------------------------------------------
+  int unsigned stub_trail_req_cyc;
+  logic        stub_trail_req_pending;
+  int unsigned stub_cam_q_cyc;
+  logic        stub_cam_q_pending;
+  int unsigned stub_sram_rd_cyc;
+  logic        stub_sram_rd_pending;
+  int unsigned stub_ce_req_cyc;
+  logic        stub_ce_req_pending;
+
   always @(posedge clk) begin
     cycle_count++;
     if (up_valid && up_ready) begin
@@ -216,6 +230,52 @@ module tb_hw_bcp;
     if (conflict_valid) begin
       conflict_seen           <= 1'b1;
       conflict_clause_latched <= conflict_clause;
+    end
+
+    // --- Stub latency monitors (blocking so reads within this block are current) ---
+
+    // Trail: first pop_req assertion → pop_valid
+    if (trail_pop_req && !stub_trail_req_pending) begin
+      stub_trail_req_cyc     = cycle_count;
+      stub_trail_req_pending = 1'b1;
+    end
+    if (trail_pop_valid && stub_trail_req_pending) begin
+      $display("  [STUB LAT trail ] req@cyc=%0d  valid@cyc=%0d  latency=%0d cycle(s)",
+               stub_trail_req_cyc, cycle_count, cycle_count - stub_trail_req_cyc);
+      stub_trail_req_pending = 1'b0;
+    end
+
+    // CAM: query accept (q_valid && q_ready) → last r_valid beat consumed
+    if (cam_q_valid && cam_q_ready && !stub_cam_q_pending) begin
+      stub_cam_q_cyc     = cycle_count;
+      stub_cam_q_pending = 1'b1;
+    end
+    if (cam_r_valid && cam_r_ready && cam_r_last && stub_cam_q_pending) begin
+      $display("  [STUB LAT cam   ] q_accept@cyc=%0d  r_last@cyc=%0d  latency=%0d cycle(s)",
+               stub_cam_q_cyc, cycle_count, cycle_count - stub_cam_q_cyc);
+      stub_cam_q_pending = 1'b0;
+    end
+
+    // SRAM read: rd accept → rd_resp consumed
+    if (sram_rd_valid && sram_rd_ready && !stub_sram_rd_pending) begin
+      stub_sram_rd_cyc     = cycle_count;
+      stub_sram_rd_pending = 1'b1;
+    end
+    if (sram_rd_resp_valid && sram_rd_resp_ready && stub_sram_rd_pending) begin
+      $display("  [STUB LAT sram  ] rd_accept@cyc=%0d  resp@cyc=%0d  latency=%0d cycle(s)",
+               stub_sram_rd_cyc, cycle_count, cycle_count - stub_sram_rd_cyc);
+      stub_sram_rd_pending = 1'b0;
+    end
+
+    // CE: req accept → resp consumed
+    if (ce_valid && ce_ready && !stub_ce_req_pending) begin
+      stub_ce_req_cyc     = cycle_count;
+      stub_ce_req_pending = 1'b1;
+    end
+    if (ce_resp_valid && ce_resp_ready && stub_ce_req_pending) begin
+      $display("  [STUB LAT ce    ] req_accept@cyc=%0d  resp@cyc=%0d  latency=%0d cycle(s)",
+               stub_ce_req_cyc, cycle_count, cycle_count - stub_ce_req_cyc);
+      stub_ce_req_pending = 1'b0;
     end
   end
 
@@ -699,6 +759,14 @@ module tb_hw_bcp;
     clk                      = 1'b0;
     rst_n                    = 1'b0;
     start                    = 1'b0;
+    stub_trail_req_cyc       = 0;
+    stub_trail_req_pending   = 1'b0;
+    stub_cam_q_cyc           = 0;
+    stub_cam_q_pending       = 1'b0;
+    stub_sram_rd_cyc         = 0;
+    stub_sram_rd_pending     = 1'b0;
+    stub_ce_req_cyc          = 0;
+    stub_ce_req_pending      = 1'b0;
 
     apply_reset();
 
