@@ -1,0 +1,38 @@
+{
+    "std": [
+        "std",
+        "reYIK",
+        "module",
+        1
+    ],
+    "sat_submodule_tb": [
+        "sat_submodule_tb",
+        "iIh2C",
+        "module",
+        6
+    ],
+    "processing_logic_0000": [
+        "processing_logic_0000",
+        "yWd2L",
+        "module",
+        2
+    ],
+    "cam_sram_array_0000": [
+        "cam_sram_array_0000",
+        "L5q3c",
+        "module",
+        4
+    ],
+    "combining_logic": [
+        "combining_logic",
+        "wtMWj",
+        "module",
+        5
+    ],
+    "...MASTER...": [
+        "SIM",
+        "amcQw",
+        "module",
+        7
+    ]
+}

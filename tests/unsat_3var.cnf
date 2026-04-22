@@ -1,0 +1,10 @@
+c UNSAT: all 8 sign-combinations of 3 variables
+p cnf 3 8
+ 1  2  3 0
+-1 -2 -3 0
+ 1 -2 -3 0
+-1  2  3 0
+ 1  2 -3 0
+-1 -2  3 0
+-1  2 -3 0
+ 1 -2  3 0

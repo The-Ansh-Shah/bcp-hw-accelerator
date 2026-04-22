@@ -1,0 +1,12 @@
+c Example 3-SAT formula
+c Variables: x1..x7 (DIMACS 1-indexed -> VID 0-indexed in hardware)
+c Clauses:
+c   C0: ( x1 v  x2 v ~x7)
+c   C1: ( x2 v ~x3 v  x7)
+c   C2: (~x1 v  x3 v  x4)
+c   C3: (~x2 v ~x4 v  x5)
+p cnf 7 4
+1 2 -7 0
+2 -3 7 0
+-1 3 4 0
+-2 -4 5 0

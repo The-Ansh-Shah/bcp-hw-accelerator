@@ -1,0 +1,16 @@
+
+════════════════════════════════════════════════════════════
+  sim
+════════════════════════════════════════════════════════════
+  Test                  Result  conf  up  done  Status
+  ----------------------------------------------------
+  DEC(x1=1)             PASS      0    0    0    OPEN
+  DEC(x2=1)             PASS      0    0    0    OPEN
+  DEC(x3=1)             PASS      0    0    0    OPEN
+  DEC(x4=1)             FAIL      0    0    0    OPEN
+    expected: conf=0 up=1 done=0
+  DEC(x5=1)             FAIL      0    0    0    OPEN
+    expected: conf=0 up=0 done=1
+  BCP: 5 calls, 10 cycles (2.0 cyc/call)  |  UNDO: 0 calls, 0 cycles
+
+  ✗ 2 / 5 FAILED

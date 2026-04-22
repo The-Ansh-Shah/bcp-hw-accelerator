@@ -14,3 +14,10 @@ ucli.key
 
 # Synopsys VCS lint/log files
 *.log
+
+# AI-agent scratch files (progress handoffs, session state, local config)
+PROGRESS.md
+.claude/
+CLAUDE.md
+.cursorrules
+.aider*

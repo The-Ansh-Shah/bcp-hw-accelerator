@@ -1,0 +1,23 @@
+Chronologic VCS simulator copyright 1991-2019
+Contains Synopsys proprietary information.
+Compiler version P-2019.06_Full64; Runtime version P-2019.06_Full64;  Apr  2 16:19 2026
+VCD+ Writer P-2019.06_Full64 Copyright (c) 1991-2019 by Synopsys Inc.
+
+-- LOAD --
+
+-- SOLVE (Python DPLL result: SAT) --
+PASS [DEC(x1=1)]: conf=0 up=0 done=0
+PASS [DEC(x2=1)]: conf=0 up=0 done=0
+PASS [DEC(x3=1)]: conf=0 up=0 done=0
+FAIL [DEC(x4=1)]: conf=0 up=0 done=0  expected conf=0 up=1 done=0
+FAIL [DEC(x5=1)]: conf=0 up=0 done=0  expected conf=0 up=0 done=1
+
+-- DONE --
+BCP_STATS: bcp_calls=5 bcp_cycles=10 undo_calls=0 undo_cycles=0
+FINISHED WITH 2 ERROR(S)
+$finish called from file "tb/sat_submodule_tb.sv", line 180.
+$finish at simulation time               366000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 366000 ps
+CPU Time:      0.220 seconds;       Data structure size:   0.0Mb
+Thu Apr  2 16:19:06 2026
