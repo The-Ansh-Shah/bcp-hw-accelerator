@@ -148,9 +148,9 @@ public:
         dut_->vid_in = vid;
         dut_->pol_in = pol;
         dut_->val_in = VAL_U;
-        tick_();
+        tick_();  // S_IDLE -> S_LOAD  (addr_wr_en asserted combinationally)
+        tick_();  // S_LOAD -> S_IDLE; posedge latches vid/pol into CAM/SRAM row
         idle_inputs_();
-        tick_();
         if (std::getenv("SAT_DEBUG")) {
             std::fprintf(stderr, "  load row=%d vid=%d pol=%d -> pol_stored[%d]=%d val_stored[%d]=%d\n",
                 row_addr, vid, pol,
@@ -206,9 +206,9 @@ public:
         dut_->op = OP_UNDO;
         dut_->vid_in = vid;
         dut_->val_in = VAL_U;
-        tick_();
+        tick_();  // S_IDLE -> S_UNDO (search_en + cam_act_wr asserted combinationally)
+        tick_();  // S_UNDO -> S_IDLE; posedge writes VAL_U to matched rows via CAM-activated path
         idle_inputs_();
-        tick_();
     }
 
     // ── Clause DB ────────────────────────────────────────────────
