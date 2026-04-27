@@ -1,6 +1,6 @@
 # HW-Accelerated SAT Solver: BCP + CDCL RTL Integration
 
-A hardware/software co-design SAT solver. The RTL implements a CAM/SRAM Boolean Constraint Propagation (BCP) engine; a C++ CDCL coprocessor drives it via a Verilated model, handling decisions, conflict analysis, clause learning, and backtracking entirely in software.
+A hardware/software co-design SAT solver. The RTL implements a CAM/SRAM Boolean Constraint Propagation (BCP) engine sized at **16 clauses × 4 literals/clause = 64 rows**; a C++ CDCL coprocessor drives it via a Verilated model, handling decisions, conflict analysis, clause learning, and backtracking entirely in software.
 
 Every BCP operation — setting a variable's value, detecting unit implications, and flagging conflicts — goes through the RTL. The coprocessor calls the hardware for each propagation step and reads back the result before continuing the CDCL loop.
 
@@ -11,12 +11,12 @@ Every BCP operation — setting a variable's value, detecting unit implications,
 ```
 bcp-hw-accelerator/
 ├── src/                        # RTL source files
-│   ├── sat_submodule.sv            # Top-level SAT module: FSM + CAM/SRAM array + evaluation
-│   ├── cam_sram_array.sv           # Array of NUM_CLAUSES×3 CAM+SRAM rows
+│   ├── sat_submodule.sv            # Top-level SAT module: FSM + CAM/SRAM array + evaluation (16 clauses × 4 lits)
+│   ├── cam_sram_array.sv           # Array of NUM_CLAUSES × LITS_PER_CLAUSE = 64 CAM+SRAM rows
 │   ├── cam_sram_row.sv             # Single row: one CAM cell + one SRAM cell
 │   ├── cam_cell.sv                 # CAM cell: VID storage + associative search
-│   ├── sram_row.sv                 # SRAM cell: 2-bit value + 1-bit polarity
-│   ├── processing_logic.sv         # Combinational per-clause evaluator (CONF/UP/DONE)
+│   ├── sram_row.sv                 # SRAM cell: 2-bit value + 1-bit polarity (reset to VAL_U=2'b01)
+│   ├── processing_logic.sv         # Combinational per-clause evaluator over 4 literals (CONF/UP/DONE)
 │   ├── combining_logic.sv          # Priority reduction across all clauses (CONF > UP > DONE)
 │   ├── hw_bcp_propagate.v          # BCP FSM skeleton (trail → CAM → clause eval → implications)
 │   ├── hw_bcp_defs.vh              # Shared defines: clause status codes, value/FSM encodings
@@ -25,9 +25,10 @@ bcp-hw-accelerator/
 ├── coprocessing/               # SW/HW coprocessor (main integration)
 │   ├── cdcl_solver.cpp             # C++ CDCL solver driving the Verilated RTL
 │   ├── Makefile                    # Build cdcl_solver
-│   ├── sat-solver.cpp              # Verilator-generated RTL model (top-level)
-│   ├── Vsat_solver.cpp -> sat-solver.cpp
+│   ├── Vsat_solver.cpp             # Verilator-generated RTL model (top-level)
 │   ├── Vsat_solver.h               # Verilated header (ports + internal signal access)
+│   ├── Vsat_solver.mk              # Verilator-generated build fragment
+│   ├── Vsat_solver_classes.mk      # Verilator class list
 │   ├── Vsat_solver__Syms.*         # Verilator symbol table
 │   └── Vsat_solver_cam_sram_row.*  # Verilated cam_sram_row submodule
 │
@@ -89,11 +90,13 @@ or
 s UNSATISFIABLE
 ```
 
-Statistics are printed to stderr:
+Statistics are printed to stderr (counts of HW operations and CDCL events):
 
 ```
-c originals=4 learnts=0 decisions=7 conflicts=0 propagations=7 hw_bcp=7 hw_undo=0 hw_load=12
+c originals=4 learnts=0 decisions=7 conflicts=0 propagations=7 hw_bcp=8 hw_undo=0 hw_load=16
 ```
+
+`hw_load` = `4 × originals` (one LOAD per row, with padding); `hw_bcp` includes the post-load `BCP(0, VAL_ZERO)` that pins padding literals to false.
 
 ### Run the included tests
 
@@ -113,13 +116,16 @@ Set `SAT_DEBUG=1` to print every hardware call, including val_stored/matchlines 
 SAT_DEBUG=1 ./cdcl_solver ../tests/example.cnf
 ```
 
-Each line shows the operation, inputs, and the hardware response:
+Each line shows the operation, inputs, and the hardware response. Values displayed are the raw 2-bit encodings (0=VAL_ZERO, 1=VAL_U, 3=VAL_ONE):
 
 ```
-  load row=0 vid=1 pol=0 -> pol_stored[0]=0 val_stored[0]=2
-  bcp(vid=3,val=1) -> conf=0 up=1 done=0 cid=1 ulp=0 up_vid=1 up_pol=1
-    val_stored: 2 1 1 2 1 1 ...
-    ml_q:       0 1 0 0 1 0 ...
+  load row=0 vid=1 pol=0 -> pol_stored[0]=0 val_stored[0]=1
+  bcp(vid=2,val=3) -> conf=0 up=1 done=0 cid=1 ulp=0 up_vid=1 up_pol=1
+    val_stored: 1 3 3 1 3 3 ... (64 entries)
+    ml_q:       0 1 0 0 1 0 ... (64 entries)
+    proc_conf:  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    proc_up:    0 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0
+    proc_done:  1 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1
 ```
 
 ### Clean
@@ -136,11 +142,12 @@ The Verilated build is fixed at elaboration time. Exceeding these limits causes 
 
 | Parameter | Value |
 |-----------|-------|
-| `NUM_CLAUSES` | 8 |
-| Literals per clause | 3 (shorter clauses are padded with a permanently-false literal at VID 0) |
+| `NUM_CLAUSES` | 16 |
+| `LITS_PER_CLAUSE` | 4 (shorter clauses are padded with a permanently-false literal at VID 0) |
+| `NUM_ROWS` | 64 (= `NUM_CLAUSES × LITS_PER_CLAUSE`) |
 | `VID_WIDTH` | 20 bits (up to 1 M variables) |
 
-To change `NUM_CLAUSES`, re-elaborate with Verilator (see [Regenerating the Verilated model](#regenerating-the-verilated-model)).
+The CAM/SRAM array is laid out as a flat 64-row pool, with clause `c` occupying rows `4c, 4c+1, 4c+2, 4c+3`. To change these limits, edit the parameters in `src/sat_submodule.sv` and re-elaborate with Verilator (see [Regenerating the Verilated model](#regenerating-the-verilated-model)).
 
 ---
 
@@ -180,14 +187,16 @@ Learned clauses are held in software and propagated via a linear scan (`propagat
 | Symbol | Bits | Meaning |
 |--------|------|---------|
 | `VAL_ZERO` | `2'b00` | Assigned false |
-| `VAL_ONE` | `2'b01` | Assigned true |
-| `VAL_U` | `2'b10` | Unassigned |
+| `VAL_ONE` | `2'b11` | Assigned true |
+| `VAL_U` | `2'b01` | Unassigned |
+
+This encoding is shared between `sat_submodule.sv`, `processing_logic.sv`, `sram_row.sv` (reset value), and `hw_bcp_defs.vh`. The C++ coprocessor sends the matching integer values via `val_in`.
 
 Polarity: `0` = positive literal (`xᵢ`), `1` = negative literal (`¬xᵢ`).
 
 ### Clause-to-row mapping
 
-Clause `c`, literal position `l` → row `3c + l`. The array holds up to `3 × NUM_CLAUSES` rows. DIMACS variables are 1-indexed; VID 0 is reserved for padding.
+Clause `c`, literal position `l` → row `4c + l`. The array holds `4 × NUM_CLAUSES = 64` rows. DIMACS variables are 1-indexed; VID 0 is reserved for padding (used when a clause has fewer than 4 literals — the padding literal is a positive `x₀` that the coprocessor pins to false via one initial `bcp(0, VAL_ZERO)` after loading).
 
 ---
 
@@ -210,7 +219,7 @@ coprocessing/cdcl_solver problems/problem_001.cnf
 
 ## Python Reference Model
 
-`dpll.py` is a cycle-accurate behavioral model of the RTL. It models the same CAM/SRAM semantics (matchline-gated UP, CONF > UP > DONE priority, lowest-index clause wins) and runs a DPLL solver on top. It is used both as a reference and to generate expected traces for testbench comparison.
+`dpll.py` is a behavioral model of the RTL semantics (matchline-gated UP, CONF > UP > DONE priority, lowest-index clause wins) with a DPLL solver on top. The self-tests are internally consistent and still pass:
 
 ```bash
 # Run built-in self-tests (3 SAT/UNSAT cases)
@@ -226,6 +235,8 @@ T3 UNSAT (all signs) (expect UNSAT): UNSAT  [OK]  ops=42
 
 ALL TESTS PASSED.
 ```
+
+> **Note:** `dpll.py`, `gen_tb.py`, and the generated `tb/sat_submodule_tb.sv` were written for the original 8-clause × 3-literal geometry with the `{VAL_U=2'b10}` encoding. They still run on their own model but no longer match the current RTL bit-for-bit. The C++ coprocessor (`coprocessing/cdcl_solver.cpp`) is the maintained driver and is the source of truth for the current 16×4 geometry and `{VAL_U=2'b01}` encoding.
 
 ---
 
@@ -275,18 +286,28 @@ python3 gen_tb.py tests/example.cnf --out tb/sat_submodule_tb.sv
 
 ## Regenerating the Verilated Model
 
-If any RTL source under `src/` changes, regenerate the Verilated C++ files from the project root:
+If any RTL source under `src/` changes (parameters, value encoding, new modules, etc.), regenerate the Verilated C++ files from the project root:
 
 ```bash
-verilator --cc src/sat_submodule.sv src/cam_sram_array.sv src/cam_sram_row.sv \
-          src/cam_cell.sv src/sram_row.sv src/processing_logic.sv src/combining_logic.sv \
-          --Mdir coprocessing --prefix Vsat_solver
-mv coprocessing/Vsat_solver.cpp coprocessing/sat-solver.cpp
-ln -sf sat-solver.cpp coprocessing/Vsat_solver.cpp
+rm -f coprocessing/Vsat_solver* coprocessing/cdcl_solver coprocessing/*.o
+
+verilator --cc \
+  src/sat_submodule.sv src/cam_sram_array.sv src/cam_sram_row.sv \
+  src/cam_cell.sv src/sram_row.sv \
+  src/processing_logic.sv src/combining_logic.sv \
+  --Mdir coprocessing --prefix Vsat_solver
+
 cd coprocessing && make
 ```
 
-The symlink `Vsat_solver.cpp → sat-solver.cpp` keeps the generated file under its original name while giving `make` a stable build target.
+If you change `NUM_CLAUSES` or `LITS_PER_CLAUSE` in `src/sat_submodule.sv`, also update the matching constants in `coprocessing/cdcl_solver.cpp`:
+
+```cpp
+static const int HW_NUM_CLAUSES     = 16;
+static const int HW_LITS_PER_CLAUSE = 4;
+```
+
+The C++ code uses these to compute row addresses (`HW_LITS_PER_CLAUSE * ci + li`), reject oversized clauses, and size the `SAT_DEBUG=1` per-row dumps.
 
 ---
 

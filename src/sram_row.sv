@@ -28,7 +28,7 @@ module sram_row (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             polarity <= 1'b0;
-            value    <= 2'b10; // Unassigned
+            value    <= 2'b01; // Unassigned (VAL_U); see hw_bcp_defs.vh
         end else if (wr_en) begin
             // Address-decoded write: update both polarity and value
             polarity <= pol_in;

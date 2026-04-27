@@ -8,8 +8,8 @@
 // backtracking all run in software.
 //
 // Hardware limits (fixed by the RTL elaboration in this directory):
-//   - 8 original clauses max (NUM_CLAUSES = 8)
-//   - exactly 3 literals per clause (shorter clauses are padded with an
+//   - 16 original clauses max (NUM_CLAUSES = 16)
+//   - up to 4 literals per clause (shorter clauses are padded with an
 //     always-false literal stored at VID 0)
 // Learnt clauses are held in software and propagated by software scan.
 
@@ -39,13 +39,18 @@ static const int OP_LOAD = 1;
 static const int OP_BCP  = 2;
 static const int OP_UNDO = 3;
 
-// RTL value encoding
+// RTL value encoding (matches sat_submodule.sv / hw_bcp_defs.vh):
+//   VAL_ZERO = 2'b00 = 0
+//   VAL_ONE  = 2'b11 = 3
+//   VAL_U    = 2'b01 = 1
 static const int VAL_ZERO = 0;
-static const int VAL_ONE  = 1;
-static const int VAL_U    = 2;
+static const int VAL_ONE  = 3;
+static const int VAL_U    = 1;
 
-// Built RTL dimensions (NUM_CLAUSES=8 in this Verilated build)
-static const int HW_NUM_CLAUSES = 8;
+// Built RTL dimensions (must match Verilator elaboration parameters)
+static const int HW_NUM_CLAUSES     = 16;
+static const int HW_LITS_PER_CLAUSE = 4;
+static const int HW_NUM_ROWS        = HW_LITS_PER_CLAUSE * HW_NUM_CLAUSES;
 
 // Three-valued truth
 static const uint8_t L_FALSE = 0;
@@ -186,15 +191,15 @@ public:
                 "  bcp(vid=%d,val=%d) -> conf=%d up=%d done=%d cid=%d ulp=%d up_vid=%d up_pol=%d\n",
                 vid, val, r.conf, r.up, r.done, r.cid, r.up_lit_pos, r.up_vid, r.up_pol);
             std::fprintf(stderr, "    val_stored:");
-            for (int i = 0; i < 24; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__val_stored[i]);
+            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__val_stored[i]);
             std::fprintf(stderr, "\n    ml_q:      ");
-            for (int i = 0; i < 24; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__matchlines_q[i]);
+            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__matchlines_q[i]);
             std::fprintf(stderr, "\n    proc_conf: ");
-            for (int i = 0; i < 8; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_conf[i]);
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_conf[i]);
             std::fprintf(stderr, "\n    proc_up:   ");
-            for (int i = 0; i < 8; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_up[i]);
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_up[i]);
             std::fprintf(stderr, "\n    proc_done: ");
-            for (int i = 0; i < 8; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_done[i]);
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_done[i]);
             std::fprintf(stderr, "\n");
         }
         idle_inputs_();
@@ -227,24 +232,24 @@ public:
                       << "); RTL is fixed-size\n";
             return false;
         }
-        if (out.size() > 3) {
+        if (out.size() > static_cast<size_t>(HW_LITS_PER_CLAUSE)) {
             std::cerr << "ERROR: clause has " << out.size()
-                      << " lits; RTL is 3-SAT only\n";
+                      << " lits; RTL supports at most " << HW_LITS_PER_CLAUSE << "\n";
             return false;
         }
         int ci = static_cast<int>(originals.size());
         Clause cl; cl.lits = out;
         originals.push_back(cl);
-        for (int li = 0; li < 3; li++) {
+        for (int li = 0; li < HW_LITS_PER_CLAUSE; li++) {
             if (li < static_cast<int>(out.size())) {
                 Lit l = out[li];
-                load_hw_(3 * ci + li, lit_var(l), lit_pol(l));
+                load_hw_(HW_LITS_PER_CLAUSE * ci + li, lit_var(l), lit_pol(l));
             } else {
                 // Padding literal: VID 0, pol=0 (positive x0). We pin x0 to
                 // logic 0 via one BCP(0, VAL_ZERO) below, which makes the
                 // padded literal permanently false without affecting any
                 // real variable in the formula (DIMACS vars are 1-indexed).
-                load_hw_(3 * ci + li, 0, 0);
+                load_hw_(HW_LITS_PER_CLAUSE * ci + li, 0, 0);
                 use_padding = true;
             }
         }

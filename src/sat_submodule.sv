@@ -1,33 +1,41 @@
 // SAT Submodule — Top-level integration of CAM/SRAM array, processing logic,
 // combining logic, and FSM controller for hardware BCP/UNDO/CIT operations.
+//
+// Default geometry: 16 clauses × 4 literals/clause = 64 rows.
+//
+// Value encoding (matches hw_bcp_defs.vh):
+//   VAL_ZERO = 2'b00
+//   VAL_ONE  = 2'b11
+//   VAL_U    = 2'b01  (unassigned)
 module sat_submodule #(
-    parameter VID_WIDTH   = 20,
-    parameter NUM_CLAUSES = 8,
-    parameter CID_WIDTH   = $clog2(NUM_CLAUSES)
+    parameter VID_WIDTH       = 20,
+    parameter NUM_CLAUSES     = 16,
+    parameter LITS_PER_CLAUSE = 4,
+    parameter CID_WIDTH       = $clog2(NUM_CLAUSES)
 )(
-    input  logic                             clk,
-    input  logic                             rst_n,
+    input  logic                                                 clk,
+    input  logic                                                 rst_n,
 
     // Operation control
-    input  logic [2:0]                       op,       // see OP_* localparams below
-    input  logic                             phase,    // 0=Phase1, 1=Phase2
+    input  logic [2:0]                                           op,       // see OP_* localparams below
+    input  logic                                                 phase,    // 0=Phase1, 1=Phase2
 
     // Data inputs
-    input  logic [VID_WIDTH-1:0]             vid_in,
-    input  logic [1:0]                       val_in,
-    input  logic                             pol_in,
-    input  logic [$clog2(3*NUM_CLAUSES)-1:0] row_addr,
-    input  logic [CID_WIDTH-1:0]             cid_in,
+    input  logic [VID_WIDTH-1:0]                                 vid_in,
+    input  logic [1:0]                                           val_in,
+    input  logic                                                 pol_in,
+    input  logic [$clog2(LITS_PER_CLAUSE*NUM_CLAUSES)-1:0]       row_addr,
+    input  logic [CID_WIDTH-1:0]                                 cid_in,
 
     // Outputs
-    output logic                             conf_out,
-    output logic                             up_out,
-    output logic                             done_out,
-    output logic [CID_WIDTH-1:0]             cid_out,
-    output logic [1:0]                       up_lit_pos,
-    output logic [VID_WIDTH-1:0]             vid_out,
-    output logic                             pol_out,
-    output logic                             valid_out
+    output logic                                                 conf_out,
+    output logic                                                 up_out,
+    output logic                                                 done_out,
+    output logic [CID_WIDTH-1:0]                                 cid_out,
+    output logic [1:0]                                           up_lit_pos,
+    output logic [VID_WIDTH-1:0]                                 vid_out,
+    output logic                                                 pol_out,
+    output logic                                                 valid_out
 );
 
     // Operation encodings
@@ -37,13 +45,14 @@ module sat_submodule #(
     localparam OP_UNDO     = 3'd3;
     localparam OP_CIT_READ = 3'd4;
 
-    // Value encoding
+    // Value encoding (aligned with hw_bcp_defs.vh and processing_logic.sv)
     localparam VAL_ZERO = 2'b00;
-    localparam VAL_ONE  = 2'b01;
-    localparam VAL_U    = 2'b10;
+    localparam VAL_ONE  = 2'b11;
+    localparam VAL_U    = 2'b01;
 
-    localparam NUM_ROWS = 3 * NUM_CLAUSES;
-    localparam ROW_ADDR_W = $clog2(NUM_ROWS);
+    localparam NUM_ROWS    = LITS_PER_CLAUSE * NUM_CLAUSES;
+    localparam ROW_ADDR_W  = $clog2(NUM_ROWS);
+    localparam LIT_IDX_W   = $clog2(LITS_PER_CLAUSE);
 
     // --- Array control signals ---
     logic                    search_en;
@@ -68,9 +77,10 @@ module sat_submodule #(
     logic                    matchlines_q [NUM_ROWS];
 
     cam_sram_array #(
-        .VID_WIDTH  (VID_WIDTH),
-        .NUM_CLAUSES(NUM_CLAUSES),
-        .NUM_ROWS   (NUM_ROWS)
+        .VID_WIDTH       (VID_WIDTH),
+        .NUM_CLAUSES     (NUM_CLAUSES),
+        .LITS_PER_CLAUSE (LITS_PER_CLAUSE),
+        .NUM_ROWS        (NUM_ROWS)
     ) u_array (
         .clk        (clk),
         .rst_n      (rst_n),
@@ -90,7 +100,7 @@ module sat_submodule #(
         .matchlines (matchlines)
     );
 
-    // --- Processing logic: one per clause ---
+    // --- Processing logic: one per clause, 4 literals each ---
     logic              proc_conf   [NUM_CLAUSES];
     logic              proc_up     [NUM_CLAUSES];
     logic              proc_done   [NUM_CLAUSES];
@@ -99,19 +109,22 @@ module sat_submodule #(
     genvar c;
     generate
         for (c = 0; c < NUM_CLAUSES; c++) begin : proc
-            logic [1:0] pval [3];
-            logic       ppol [3];
-            logic       pml  [3];
+            logic [1:0] pval [4];
+            logic       ppol [4];
+            logic       pml  [4];
 
-            assign pval[0] = val_stored[3*c + 0];
-            assign pval[1] = val_stored[3*c + 1];
-            assign pval[2] = val_stored[3*c + 2];
-            assign ppol[0] = pol_stored[3*c + 0];
-            assign ppol[1] = pol_stored[3*c + 1];
-            assign ppol[2] = pol_stored[3*c + 2];
-            assign pml[0]  = matchlines_q[3*c + 0];
-            assign pml[1]  = matchlines_q[3*c + 1];
-            assign pml[2]  = matchlines_q[3*c + 2];
+            assign pval[0] = val_stored[LITS_PER_CLAUSE*c + 0];
+            assign pval[1] = val_stored[LITS_PER_CLAUSE*c + 1];
+            assign pval[2] = val_stored[LITS_PER_CLAUSE*c + 2];
+            assign pval[3] = val_stored[LITS_PER_CLAUSE*c + 3];
+            assign ppol[0] = pol_stored[LITS_PER_CLAUSE*c + 0];
+            assign ppol[1] = pol_stored[LITS_PER_CLAUSE*c + 1];
+            assign ppol[2] = pol_stored[LITS_PER_CLAUSE*c + 2];
+            assign ppol[3] = pol_stored[LITS_PER_CLAUSE*c + 3];
+            assign pml[0]  = matchlines_q[LITS_PER_CLAUSE*c + 0];
+            assign pml[1]  = matchlines_q[LITS_PER_CLAUSE*c + 1];
+            assign pml[2]  = matchlines_q[LITS_PER_CLAUSE*c + 2];
+            assign pml[3]  = matchlines_q[LITS_PER_CLAUSE*c + 3];
 
             processing_logic u_proc (
                 .val        (pval),
@@ -159,12 +172,10 @@ module sat_submodule #(
 
     state_t state;
 
-    // CIT read: 3 sequential row reads per clause
-    logic [1:0] cit_lit_idx;
+    // CIT read: LITS_PER_CLAUSE sequential row reads per clause
+    logic [LIT_IDX_W-1:0] cit_lit_idx;
 
     // Latch matchlines at posedge while in BCP1 so they're stable during BCP2.
-    // The CAM search is only active in BCP1 (search_en=0 in BCP2), so we must
-    // hold the BCP1 matchlines to correctly gate UP detection in BCP2.
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int r = 0; r < NUM_ROWS; r++) matchlines_q[r] <= 1'b0;
@@ -176,7 +187,7 @@ module sat_submodule #(
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state       <= S_IDLE;
-            cit_lit_idx <= 2'd0;
+            cit_lit_idx <= '0;
         end else begin
             case (state)
                 S_IDLE: begin
@@ -184,7 +195,7 @@ module sat_submodule #(
                         OP_LOAD:     state <= S_LOAD;
                         OP_BCP:      state <= S_BCP1;
                         OP_UNDO:     state <= S_UNDO;
-                        OP_CIT_READ: begin state <= S_CIT; cit_lit_idx <= 2'd0; end
+                        OP_CIT_READ: begin state <= S_CIT; cit_lit_idx <= '0; end
                         default:     state <= S_IDLE;
                     endcase
                 end
@@ -193,11 +204,11 @@ module sat_submodule #(
                 S_BCP2:  state <= S_IDLE;
                 S_UNDO:  state <= S_IDLE;
                 S_CIT: begin
-                    if (cit_lit_idx == 2'd2) begin
+                    if (cit_lit_idx == LIT_IDX_W'(LITS_PER_CLAUSE - 1)) begin
                         state       <= S_IDLE;
-                        cit_lit_idx <= 2'd0;
+                        cit_lit_idx <= '0;
                     end else begin
-                        cit_lit_idx <= cit_lit_idx + 2'd1;
+                        cit_lit_idx <= cit_lit_idx + 1'b1;
                     end
                 end
                 default: state <= S_IDLE;
@@ -238,7 +249,7 @@ module sat_submodule #(
                 if (tree_up) begin
                     // Read back VID and polarity of the UP literal
                     addr_rd_en   = 1'b1;
-                    arr_row_addr = ROW_ADDR_W'(tree_cid * 3 + tree_ulp);
+                    arr_row_addr = ROW_ADDR_W'(tree_cid * LITS_PER_CLAUSE + 32'(tree_ulp));
                 end
             end
             S_UNDO: begin
@@ -249,9 +260,9 @@ module sat_submodule #(
                 valid_out  = 1'b1;
             end
             S_CIT: begin
-                // Read VID and polarity from the 3 rows of clause cid_in
+                // Read VID and polarity from each row of clause cid_in
                 addr_rd_en   = 1'b1;
-                arr_row_addr = ROW_ADDR_W'(cid_in * 3 + cit_lit_idx);
+                arr_row_addr = ROW_ADDR_W'(cid_in * LITS_PER_CLAUSE + 32'(cit_lit_idx));
                 valid_out    = 1'b1;
             end
             default: ;

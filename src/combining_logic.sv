@@ -4,7 +4,7 @@
 //
 // Implemented as a priority encoder (functionally equivalent to binary tree).
 module combining_logic #(
-    parameter NUM_CLAUSES = 8,
+    parameter NUM_CLAUSES = 16,
     parameter CID_WIDTH   = $clog2(NUM_CLAUSES)
 )(
     input  logic              conf_in  [NUM_CLAUSES],

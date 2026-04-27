@@ -2,8 +2,9 @@
 // Provides address-decoded access and broadcast search with matchline-activated writes.
 module cam_sram_array #(
     parameter VID_WIDTH   = 20,
-    parameter NUM_CLAUSES = 8,
-    parameter NUM_ROWS    = 3 * NUM_CLAUSES
+    parameter NUM_CLAUSES = 16,
+    parameter LITS_PER_CLAUSE = 4,
+    parameter NUM_ROWS    = LITS_PER_CLAUSE * NUM_CLAUSES
 )(
     input  logic                              clk,
     input  logic                              rst_n,
