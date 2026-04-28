@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -490,13 +491,18 @@ int main(int argc, char** argv) {
     }
     Solver S;
     if (!parseDIMACS(argv[1], S)) return 1;
+    auto t0 = std::chrono::steady_clock::now();
     int r = S.solve();
+    auto t1 = std::chrono::steady_clock::now();
+    double sw_time_ns = std::chrono::duration<double, std::nano>(t1 - t0).count();
     if (r == 1) {
         std::cout << "s SATISFIABLE\n";
         S.printModel(std::cout);
     } else {
         std::cout << "s UNSATISFIABLE\n";
     }
+    uint64_t hw_bcp_cycles = S.n_hw_bcp;          // 1 true HW cycle per BCP
+    double   bcp_time_ns   = hw_bcp_cycles / 1.0; // @1GHz: 1 cycle = 1ns
     std::cerr << "c originals="      << S.originals.size()
               << " learnts="         << S.learnts.size()
               << " decisions="       << S.n_decisions
@@ -506,5 +512,11 @@ int main(int argc, char** argv) {
               << " hw_undo="         << S.n_hw_undo
               << " hw_load="         << S.n_hw_load
               << "\n";
+    std::cerr << "c hw_bcp_cycles="  << hw_bcp_cycles
+              << " (sim_cycles="     << S.n_hw_bcp * 3 << "/3)"
+              << " @1GHz bcp_time="  << bcp_time_ns    << "ns"
+              << " ("                << bcp_time_ns / 1e3 << "us)\n";
+    std::cerr << "c sw_cdcl_time="   << sw_time_ns     << "ns"
+              << " ("                << sw_time_ns / 1e3 << "us)\n";
     return 0;
 }
