@@ -133,20 +133,40 @@ module sat_submodule_tb;
 
     task check(input string name,
                input logic exp_conf, exp_up, exp_done);
+        string verdict;
         if (conf_out !== exp_conf || up_out !== exp_up || done_out !== exp_done) begin
-            $display("FAIL [%s]: conf=%b up=%b done=%b  expected conf=%b up=%b done=%b",
-                     name, conf_out, up_out, done_out,
-                     exp_conf, exp_up, exp_done);
+            verdict = "FAIL";
             num_errors++;
         end else begin
-            $display("PASS [%s]: conf=%b up=%b done=%b",
-                     name, conf_out, up_out, done_out);
+            verdict = "PASS";
         end
+        $display("%s [%s]: actual {conf=%b up=%b done=%b}  expected {conf=%b up=%b done=%b}",
+                 verdict, name,
+                 conf_out, up_out, done_out,
+                 exp_conf, exp_up, exp_done);
     endtask
 
     task check_undo(input string name,
                     input logic exp_conf, exp_up, exp_done);
         check(name, exp_conf, exp_up, exp_done);
+    endtask
+
+    // Format one literal as " x<vid>" or "~x<vid>".
+    function automatic string fmt_lit(input logic [VID_WIDTH-1:0] vid,
+                                      input logic                pol);
+        return $sformatf("%sx%0d", pol ? "~" : " ", vid);
+    endfunction
+
+    // Print one clause in human-readable form.
+    task print_clause(input int                   ci,
+                      input logic [VID_WIDTH-1:0] v0, input logic p0,
+                      input logic [VID_WIDTH-1:0] v1, input logic p1,
+                      input logic [VID_WIDTH-1:0] v2, input logic p2,
+                      input logic [VID_WIDTH-1:0] v3, input logic p3);
+        $display("  C%0d: ( %s | %s | %s | %s )",
+                 ci,
+                 fmt_lit(v0, p0), fmt_lit(v1, p1),
+                 fmt_lit(v2, p2), fmt_lit(v3, p3));
     endtask
 
     // ──────────────────────────────────────────────────────────────────
@@ -159,6 +179,11 @@ module sat_submodule_tb;
     // ──────────────────────────────────────────────────────────────────
     task run_test_A;
         $display("\n========== Test A: 4-SAT, UP-chain to DONE ==========");
+        $display("CNF (4 clauses, 4 literals each):");
+        print_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(1, 20'd1, 1'b1, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(2, 20'd1, 1'b0, 20'd2, 1'b1, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(3, 20'd1, 1'b1, 20'd2, 1'b1, 20'd3, 1'b1, 20'd4, 1'b0);
         do_reset;
 
         load_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
@@ -189,6 +214,11 @@ module sat_submodule_tb;
     // ──────────────────────────────────────────────────────────────────
     task run_test_B;
         $display("\n========== Test B: 4-SAT, CONFLICT ==========");
+        $display("CNF (4 clauses, 4 literals each):");
+        print_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(1, 20'd1, 1'b1, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(2, 20'd1, 1'b1, 20'd2, 1'b1, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(3, 20'd1, 1'b1, 20'd2, 1'b1, 20'd3, 1'b1, 20'd4, 1'b1);
         do_reset;
 
         load_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
@@ -216,6 +246,11 @@ module sat_submodule_tb;
     // ──────────────────────────────────────────────────────────────────
     task run_test_C;
         $display("\n========== Test C: 4-SAT, CONFLICT → UNDO → SAT ==========");
+        $display("CNF (4 clauses, 4 literals each):");
+        print_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(1, 20'd1, 1'b1, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(2, 20'd1, 1'b1, 20'd2, 1'b1, 20'd3, 1'b0, 20'd4, 1'b0);
+        print_clause(3, 20'd1, 1'b1, 20'd2, 1'b1, 20'd3, 1'b1, 20'd4, 1'b1);
         do_reset;
 
         load_clause(0, 20'd1, 1'b0, 20'd2, 1'b0, 20'd3, 1'b0, 20'd4, 1'b0);
