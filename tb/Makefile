@@ -15,7 +15,10 @@
 #   make clean           Remove all build artifacts
 
 SHELL = /bin/bash
-ENV   = source ../eecs151source.bashrc &&
+# Source the project's VCS env script automatically.  Use an absolute path
+# so the rule still works after a `cd` into build/<tb>/.
+BASHRC = $(abspath ../eecs151source.bashrc)
+ENV    = source $(BASHRC) &&
 
 SRC_DIR = ../src
 BUILD   = build

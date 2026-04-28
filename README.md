@@ -287,11 +287,7 @@ ALL TESTS PASSED.
 
 ## RTL Simulation (VCS)
 
-Requires Synopsys VCS. On Berkeley EECS instructional machines (`eda-[1-4].eecs.berkeley.edu`):
-
-```bash
-source /home/ff/eecs151/eecs151source.bashrc
-```
+Requires Synopsys VCS. On Berkeley EECS instructional machines (`eda-[1-4].eecs.berkeley.edu`), the project ships its own VCS environment script at `eecs151source.bashrc` (project root) — every Makefile under `tb/` and `sim/` sources it automatically before invoking `vcs` / `dve`, so **you do not need to `source` anything by hand** to run the testbenches below. (If you also want `vcs` / `dve` available interactively in your shell, you can still source it once: `source eecs151source.bashrc`.)
 
 ### Environment sanity check
 
@@ -320,7 +316,7 @@ dve -vpd vcdplus.vpd &
 
 ### Testbenches
 
-The `tb/` directory holds every SystemVerilog testbench, plus a `Makefile` that builds and runs them individually. Each testbench compiles into its own `tb/build/<name>/` subdirectory so the artifacts (`csrc/`, `simv.daidir/`, waveform dump) don't collide. Targets recompile only when a source under `src/` or the testbench file itself changes, so re-running is fast.
+The `tb/` directory holds every SystemVerilog testbench, plus a `Makefile` that builds and runs them individually. Each testbench compiles into its own `tb/build/<name>/` subdirectory so the artifacts (`csrc/`, `simv.daidir/`, waveform dump) don't collide. Targets recompile only when a source under `src/` or the testbench file itself changes, so re-running is fast. The Makefile sources `eecs151source.bashrc` automatically (using its absolute path) before each `vcs` / `dve` invocation, so no manual `source` is required.
 
 #### Single-sub-SAT TBs (small, fast)
 
