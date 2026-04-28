@@ -30,6 +30,14 @@ SAT_SRCS = \
     $(SRC_DIR)/sat_submodule.sv \
     $(SRC_DIR)/sram_row.sv
 
+# Hierarchy sources (sub-SAT → group → array)
+ARRAY_SRCS = \
+    $(SAT_SRCS) \
+    $(SRC_DIR)/sat_group_submodule.sv \
+    $(SRC_DIR)/sat_array.sv
+
+ARRAY_SRCS_REL = $(addprefix ../../,$(ARRAY_SRCS))
+
 VCS_OPTS = \
     -full64 \
     -sverilog \
@@ -49,8 +57,8 @@ PLUSARGS = $(if $(TEST),+TEST=$(TEST),)
 
 .DEFAULT_GOAL := help
 .PHONY: help all clean \
-        sat 4sat 4sat-A 4sat-B 4sat-C \
-        wave-sat wave-4sat
+        sat 4sat 4sat-A 4sat-B 4sat-C array \
+        wave-sat wave-4sat wave-array
 
 help:
 	@echo "sat_submodule testbench runner"
@@ -64,11 +72,13 @@ help:
 	@echo "  make 4sat-A           Shorthand: only sub-test A"
 	@echo "  make 4sat-B           Shorthand: only sub-test B"
 	@echo "  make 4sat-C           Shorthand: only sub-test C"
+	@echo "  make array            sat_array hierarchy smoke test (sat_array_tb.sv)"
 	@echo "  make all              Run every testbench"
 	@echo ""
 	@echo "View waveforms (after a run):"
 	@echo "  make wave-sat         Open sat_submodule_tb waveform in DVE"
 	@echo "  make wave-4sat        Open sat_submodule_4sat_tb waveform in DVE"
+	@echo "  make wave-array       Open sat_array_tb waveform in DVE"
 	@echo ""
 	@echo "Misc:"
 	@echo "  make clean            Remove all build artifacts (build/)"
@@ -85,6 +95,11 @@ $(BUILD)/4sat/simv: sat_submodule_4sat_tb.sv $(SAT_SRCS)
 	@mkdir -p $(BUILD)/4sat
 	$(ENV) cd $(BUILD)/4sat && vcs $(VCS_OPTS) -top sat_submodule_tb \
 	    $(SAT_SRCS_REL) ../../sat_submodule_4sat_tb.sv -o simv
+
+$(BUILD)/array/simv: sat_array_tb.sv $(ARRAY_SRCS)
+	@mkdir -p $(BUILD)/array
+	$(ENV) cd $(BUILD)/array && vcs $(VCS_OPTS) -top sat_array_tb \
+	    $(ARRAY_SRCS_REL) ../../sat_array_tb.sv -o simv
 
 # ── Run rules ────────────────────────────────────────────────────────────
 
@@ -108,6 +123,10 @@ sat: $(BUILD)/sat/simv
 	@echo "── Running sat_submodule_4sat_tb [C] ──"
 	@cd $(BUILD)/4sat && ./simv +TEST=C
 
+array: $(BUILD)/array/simv
+	@echo "── Running sat_array_tb (hierarchy smoke test) ──"
+	@cd $(BUILD)/array && ./simv $(PLUSARGS)
+
 # ── Waveform viewers ─────────────────────────────────────────────────────
 
 wave-sat: $(BUILD)/sat/simv
@@ -116,9 +135,12 @@ wave-sat: $(BUILD)/sat/simv
 wave-4sat: $(BUILD)/4sat/simv
 	@cd $(BUILD)/4sat && $(ENV) dve -full64 -vpd waves_4sat.vpd &
 
+wave-array: $(BUILD)/array/simv
+	@cd $(BUILD)/array && $(ENV) dve -full64 -vpd waves_array.vpd &
+
 # ── Aggregate ────────────────────────────────────────────────────────────
 
-all: sat 4sat
+all: sat 4sat array
 
 clean:
 	rm -rf $(BUILD)
