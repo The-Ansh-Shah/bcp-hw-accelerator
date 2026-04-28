@@ -27,10 +27,15 @@ Polarity encoding (matches sat_submodule):
     pol=0  ->  positive literal  xi
     pol=1  ->  negative literal  ~xi
 
-Value encoding:
+Value encoding (matches sat_submodule.sv / processing_logic.sv / hw_bcp_defs.vh):
     2'b00 = 0 (logic zero)
-    2'b01 = 1 (logic one)
-    2'b10 = U (unassigned, initial state)
+    2'b11 = 1 (logic one)
+    2'b01 = U (unassigned, initial state)
+
+VID convention:
+    DIMACS variable i  ->  VID i  (1-indexed, mirroring coprocessing/cdcl_solver.cpp).
+    VID 0 is reserved for padding when a clause has fewer than LITS_PER_CLAUSE
+    literals; the generated TB pins x0=0 once after LOAD via bcp(0, VAL_ZERO).
 """
 
 import argparse
@@ -47,8 +52,7 @@ VAL_U    = _dpll.VAL_U
 
 # ── Inline CNF (alternative to passing a file) ─────────────────────────────
 # Edit this list to embed a formula directly.
-# Variables are 0-indexed here (unlike DIMACS which starts at 1).
-# IMPORTANT: -0 == 0 in Python — use DIMACS files if you need to negate VID 0.
+# Variables are 1-indexed (DIMACS-style); VID 0 is reserved for padding.
 INLINE_CNF = [
     [ 1,  2, -6],   # x1 ∨ x2 ∨ ~x6
     [ 2, -3,  6],   # x2 ∨ ~x3 ∨ x6
@@ -81,7 +85,7 @@ def parse_dimacs(path):
                         clauses.append(current)
                     current = []
                 else:
-                    vid = abs(lit) - 1   # 1-indexed -> 0-indexed
+                    vid = abs(lit)       # keep DIMACS 1-indexing; VID 0 reserved for padding
                     pol = 1 if lit < 0 else 0
                     current.append((vid, pol))
     if current:
@@ -132,14 +136,29 @@ def _sv_val(val, vid_width):
 
 
 def generate_tb(clauses, num_vars, out_path, vid_width=20,
-                lits_per_clause=3, solve=True, max_decisions=100000):
+                lits_per_clause=4, solve=True, max_decisions=100000):
     num_clauses_raw = len(clauses)
     num_clauses_hw  = next_power_of_two(num_clauses_raw)   # must be power-of-2
     num_rows        = lits_per_clause * num_clauses_hw
     row_addr_w      = max(1, num_rows.bit_length())
 
-    # ── LOAD block ──────────────────────────────────────────────────────────
+    # ── CNF echo + LOAD block ───────────────────────────────────────────────
     load_lines = []
+    load_lines.append(
+        '        $display("\\n-- CNF ({} clauses, {} literals each) --");'.format(
+            num_clauses_hw, lits_per_clause))
+    for ci in range(num_clauses_hw):
+        clause = clauses[ci] if ci < num_clauses_raw else []
+        padded = pad_clause(clause, lits_per_clause)
+        lit_strs = []
+        for vid, pol, valid in padded:
+            lit_strs.append("{}x{}".format("~" if pol else " ", vid))
+        note = " (padding)" if ci >= num_clauses_raw else ""
+        load_lines.append(
+            '        $display("  C{}{}: ( {} )");'.format(
+                ci, note, " | ".join(lit_strs)))
+    load_lines.append("")
+    load_lines.append('        $display("\\n-- LOAD --");')
     for ci in range(num_clauses_hw):
         clause  = clauses[ci] if ci < num_clauses_raw else []
         padded  = pad_clause(clause, lits_per_clause)
@@ -151,7 +170,7 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
                 comment = "{}x{}  ({})".format(
                     '~' if pol else '', vid, 'neg' if pol else 'pos')
             else:
-                comment = "(unused slot)"
+                comment = "(unused slot — VID 0 padding)"
             load_lines.append(
                 "        load_row({:3d}, {}'d{}, 1'b{});  // C{} L{}: {}".format(
                     row, vid_width, vid, pol, ci, li, comment))
@@ -164,6 +183,7 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
     if solve:
         sat, assignment, trace, hw = _dpll.solve_cnf(
             clauses, num_clauses_hw=num_clauses_hw,
+            lits_per_clause=lits_per_clause,
             vid_width=vid_width, max_decisions=max_decisions)
 
         sat_result = sat
@@ -213,11 +233,12 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
 
         module sat_submodule_tb;
 
-            localparam VID_WIDTH   = {vid_width};
-            localparam NUM_CLAUSES = {num_clauses_hw};
-            localparam CID_WIDTH   = $clog2(NUM_CLAUSES);
-            localparam NUM_ROWS    = {lits_per_clause} * NUM_CLAUSES;
-            localparam ROW_ADDR_W  = $clog2(NUM_ROWS);
+            localparam VID_WIDTH       = {vid_width};
+            localparam NUM_CLAUSES     = {num_clauses_hw};
+            localparam LITS_PER_CLAUSE = {lits_per_clause};
+            localparam CID_WIDTH       = $clog2(NUM_CLAUSES);
+            localparam NUM_ROWS        = LITS_PER_CLAUSE * NUM_CLAUSES;
+            localparam ROW_ADDR_W      = $clog2(NUM_ROWS);
 
             localparam OP_IDLE     = 3'd0;
             localparam OP_LOAD     = 3'd1;
@@ -225,9 +246,10 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
             localparam OP_UNDO     = 3'd3;
             localparam OP_CIT_READ = 3'd4;
 
-            localparam VAL_ZERO = 2'b00;
-            localparam VAL_ONE  = 2'b01;
-            localparam VAL_U    = 2'b10;
+            // Match the RTL encoding (sat_submodule.sv / processing_logic.sv)
+            localparam [1:0] VAL_ZERO = 2'b00;
+            localparam [1:0] VAL_ONE  = 2'b11;
+            localparam [1:0] VAL_U    = 2'b01;
 
             logic                    clk, rst_n;
             logic [2:0]              op;
@@ -246,9 +268,10 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
             logic                    valid_out;
 
             sat_submodule #(
-                .VID_WIDTH  (VID_WIDTH),
-                .NUM_CLAUSES(NUM_CLAUSES),
-                .CID_WIDTH  (CID_WIDTH)
+                .VID_WIDTH       (VID_WIDTH),
+                .NUM_CLAUSES     (NUM_CLAUSES),
+                .LITS_PER_CLAUSE (LITS_PER_CLAUSE),
+                .CID_WIDTH       (CID_WIDTH)
             ) dut (.*);
 
             initial clk = 0;
@@ -278,12 +301,18 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
                 @(posedge clk); #1;
             endtask
 
+            // FSM: IDLE -> BCP1 -> BCP2 -> IDLE (one BCP takes 3 cycles).
+            // Each call drains a previous S_BCP2 to S_IDLE first via one
+            // OP_IDLE cycle, runs BCP1/BCP2, and returns with state==S_BCP2 so
+            // the caller's check() can sample valid conf/up/done outputs.
             task bcp(input logic [VID_WIDTH-1:0] vid,
                      input logic [1:0]            val);
                 longint t_start;
                 t_start = $time / 10;
+                op = OP_IDLE; vid_in = '0; val_in = '0;
+                phase = '0; row_addr = '0; pol_in = '0; cid_in = '0;
+                @(posedge clk); #1;
                 op = OP_BCP; vid_in = vid; val_in = val;
-                phase = 0; row_addr = '0; pol_in = '0; cid_in = '0;
                 @(posedge clk); #1;
                 @(posedge clk); #1;
                 op = OP_IDLE;
@@ -294,8 +323,10 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
             task undo(input logic [VID_WIDTH-1:0] vid);
                 longint t_start;
                 t_start = $time / 10;
+                op = OP_IDLE; vid_in = '0; val_in = '0;
+                phase = '0; row_addr = '0; pol_in = '0; cid_in = '0;
+                @(posedge clk); #1;
                 op = OP_UNDO; vid_in = vid; val_in = VAL_U;
-                phase = 0; row_addr = '0; pol_in = '0; cid_in = '0;
                 @(posedge clk); #1;
                 op = OP_IDLE;
                 @(posedge clk); #1;
@@ -305,15 +336,17 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
 
             task check(input string name,
                        input logic exp_conf, exp_up, exp_done);
+                string verdict;
                 if (conf_out !== exp_conf || up_out !== exp_up || done_out !== exp_done) begin
-                    $display("FAIL [%s]: conf=%b up=%b done=%b  expected conf=%b up=%b done=%b",
-                             name, conf_out, up_out, done_out,
-                             exp_conf, exp_up, exp_done);
+                    verdict = "FAIL";
                     num_errors++;
                 end else begin
-                    $display("PASS [%s]: conf=%b up=%b done=%b",
-                             name, conf_out, up_out, done_out);
+                    verdict = "PASS";
                 end
+                $display("%s [%s]: actual {{conf=%b up=%b done=%b}}  expected {{conf=%b up=%b done=%b}}",
+                         verdict, name,
+                         conf_out, up_out, done_out,
+                         exp_conf, exp_up, exp_done);
             endtask
 
             // check() variant for UNDO (same logic, separate name for clarity)
@@ -333,8 +366,7 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
                 rst_n = 1;
                 @(posedge clk); #1;
 
-                // ── LOAD ────────────────────────────────────────────────
-                $display("\\n-- LOAD --");
+                // ── CNF echo + LOAD ─────────────────────────────────────
         {load_block}
         {solve_block}
                 // ── STATS ────────────────────────────────────────────────

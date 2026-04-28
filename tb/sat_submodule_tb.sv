@@ -8,11 +8,12 @@
 
 module sat_submodule_tb;
 
-    localparam VID_WIDTH   = 20;
-    localparam NUM_CLAUSES = 4;
-    localparam CID_WIDTH   = $clog2(NUM_CLAUSES);
-    localparam NUM_ROWS    = 3 * NUM_CLAUSES;
-    localparam ROW_ADDR_W  = $clog2(NUM_ROWS);
+    localparam VID_WIDTH       = 20;
+    localparam NUM_CLAUSES     = 4;
+    localparam LITS_PER_CLAUSE = 4;
+    localparam CID_WIDTH       = $clog2(NUM_CLAUSES);
+    localparam NUM_ROWS        = LITS_PER_CLAUSE * NUM_CLAUSES;
+    localparam ROW_ADDR_W      = $clog2(NUM_ROWS);
 
     localparam OP_IDLE     = 3'd0;
     localparam OP_LOAD     = 3'd1;
@@ -20,9 +21,10 @@ module sat_submodule_tb;
     localparam OP_UNDO     = 3'd3;
     localparam OP_CIT_READ = 3'd4;
 
-    localparam VAL_ZERO = 2'b00;
-    localparam VAL_ONE  = 2'b01;
-    localparam VAL_U    = 2'b10;
+    // Match the RTL encoding (sat_submodule.sv / processing_logic.sv)
+    localparam [1:0] VAL_ZERO = 2'b00;
+    localparam [1:0] VAL_ONE  = 2'b11;
+    localparam [1:0] VAL_U    = 2'b01;
 
     logic                    clk, rst_n;
     logic [2:0]              op;
@@ -41,9 +43,10 @@ module sat_submodule_tb;
     logic                    valid_out;
 
     sat_submodule #(
-        .VID_WIDTH  (VID_WIDTH),
-        .NUM_CLAUSES(NUM_CLAUSES),
-        .CID_WIDTH  (CID_WIDTH)
+        .VID_WIDTH       (VID_WIDTH),
+        .NUM_CLAUSES     (NUM_CLAUSES),
+        .LITS_PER_CLAUSE (LITS_PER_CLAUSE),
+        .CID_WIDTH       (CID_WIDTH)
     ) dut (.*);
 
     initial clk = 0;
@@ -73,12 +76,18 @@ module sat_submodule_tb;
         @(posedge clk); #1;
     endtask
 
+    // FSM: IDLE -> BCP1 -> BCP2 -> IDLE (one BCP takes 3 cycles).
+    // Each call drains a previous S_BCP2 to S_IDLE first via one
+    // OP_IDLE cycle, runs BCP1/BCP2, and returns with state==S_BCP2 so
+    // the caller's check() can sample valid conf/up/done outputs.
     task bcp(input logic [VID_WIDTH-1:0] vid,
              input logic [1:0]            val);
         longint t_start;
         t_start = $time / 10;
+        op = OP_IDLE; vid_in = '0; val_in = '0;
+        phase = '0; row_addr = '0; pol_in = '0; cid_in = '0;
+        @(posedge clk); #1;
         op = OP_BCP; vid_in = vid; val_in = val;
-        phase = 0; row_addr = '0; pol_in = '0; cid_in = '0;
         @(posedge clk); #1;
         @(posedge clk); #1;
         op = OP_IDLE;
@@ -89,8 +98,10 @@ module sat_submodule_tb;
     task undo(input logic [VID_WIDTH-1:0] vid);
         longint t_start;
         t_start = $time / 10;
+        op = OP_IDLE; vid_in = '0; val_in = '0;
+        phase = '0; row_addr = '0; pol_in = '0; cid_in = '0;
+        @(posedge clk); #1;
         op = OP_UNDO; vid_in = vid; val_in = VAL_U;
-        phase = 0; row_addr = '0; pol_in = '0; cid_in = '0;
         @(posedge clk); #1;
         op = OP_IDLE;
         @(posedge clk); #1;
@@ -100,15 +111,17 @@ module sat_submodule_tb;
 
     task check(input string name,
                input logic exp_conf, exp_up, exp_done);
+        string verdict;
         if (conf_out !== exp_conf || up_out !== exp_up || done_out !== exp_done) begin
-            $display("FAIL [%s]: conf=%b up=%b done=%b  expected conf=%b up=%b done=%b",
-                     name, conf_out, up_out, done_out,
-                     exp_conf, exp_up, exp_done);
+            verdict = "FAIL";
             num_errors++;
         end else begin
-            $display("PASS [%s]: conf=%b up=%b done=%b",
-                     name, conf_out, up_out, done_out);
+            verdict = "PASS";
         end
+        $display("%s [%s]: actual {conf=%b up=%b done=%b}  expected {conf=%b up=%b done=%b}",
+                 verdict, name,
+                 conf_out, up_out, done_out,
+                 exp_conf, exp_up, exp_done);
     endtask
 
     // check() variant for UNDO (same logic, separate name for clarity)
@@ -128,29 +141,42 @@ module sat_submodule_tb;
         rst_n = 1;
         @(posedge clk); #1;
 
-        // ── LOAD ────────────────────────────────────────────────
+        // ── CNF echo + LOAD ─────────────────────────────────────
+        $display("\n-- CNF (4 clauses, 4 literals each) --");
+        $display("  C0: (  x1 |  x2 | ~x7 |  x0 )");
+        $display("  C1: (  x2 | ~x3 |  x7 |  x0 )");
+        $display("  C2: ( ~x1 |  x3 |  x4 |  x0 )");
+        $display("  C3: ( ~x2 | ~x4 |  x5 |  x0 )");
+
         $display("\n-- LOAD --");
         // Clause 0
         load_row(  0, 20'd1, 1'b0);  // C0 L0: x1  (pos)
         load_row(  1, 20'd2, 1'b0);  // C0 L1: x2  (pos)
-        load_row(  2, 20'd6, 1'b1);  // C0 L2: ~x6  (neg)
+        load_row(  2, 20'd7, 1'b1);  // C0 L2: ~x7  (neg)
+        load_row(  3, 20'd0, 1'b0);  // C0 L3: (unused slot — VID 0 padding)
 
         // Clause 1
-        load_row(  3, 20'd2, 1'b0);  // C1 L0: x2  (pos)
-        load_row(  4, 20'd3, 1'b1);  // C1 L1: ~x3  (neg)
-        load_row(  5, 20'd6, 1'b0);  // C1 L2: x6  (pos)
+        load_row(  4, 20'd2, 1'b0);  // C1 L0: x2  (pos)
+        load_row(  5, 20'd3, 1'b1);  // C1 L1: ~x3  (neg)
+        load_row(  6, 20'd7, 1'b0);  // C1 L2: x7  (pos)
+        load_row(  7, 20'd0, 1'b0);  // C1 L3: (unused slot — VID 0 padding)
 
         // Clause 2
-        load_row(  6, 20'd1, 1'b1);  // C2 L0: ~x1  (neg)
-        load_row(  7, 20'd3, 1'b0);  // C2 L1: x3  (pos)
-        load_row(  8, 20'd4, 1'b0);  // C2 L2: x4  (pos)
+        load_row(  8, 20'd1, 1'b1);  // C2 L0: ~x1  (neg)
+        load_row(  9, 20'd3, 1'b0);  // C2 L1: x3  (pos)
+        load_row( 10, 20'd4, 1'b0);  // C2 L2: x4  (pos)
+        load_row( 11, 20'd0, 1'b0);  // C2 L3: (unused slot — VID 0 padding)
 
         // Clause 3
-        load_row(  9, 20'd2, 1'b1);  // C3 L0: ~x2  (neg)
-        load_row( 10, 20'd4, 1'b1);  // C3 L1: ~x4  (neg)
-        load_row( 11, 20'd5, 1'b0);  // C3 L2: x5  (pos)
+        load_row( 12, 20'd2, 1'b1);  // C3 L0: ~x2  (neg)
+        load_row( 13, 20'd4, 1'b1);  // C3 L1: ~x4  (neg)
+        load_row( 14, 20'd5, 1'b0);  // C3 L2: x5  (pos)
+        load_row( 15, 20'd0, 1'b0);  // C3 L3: (unused slot — VID 0 padding)
 
         $display("\n-- SOLVE (Python DPLL result: SAT) --");
+        bcp(20'd0, VAL_ZERO);
+        check("PINPAD(x0=0)", 1'b0, 1'b0, 1'b0);
+
         bcp(20'd1, VAL_ONE);
         check("DEC(x1=1)", 1'b0, 1'b0, 1'b0);
 

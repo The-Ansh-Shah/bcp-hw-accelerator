@@ -20,9 +20,10 @@ Key hardware fidelity notes:
 """
 
 # ── Value constants ────────────────────────────────────────────────────────
+# Match the RTL bit-for-bit (sat_submodule.sv / processing_logic.sv / sram_row.sv).
 VAL_ZERO = 0   # 2'b00
-VAL_ONE  = 1   # 2'b01
-VAL_U    = 2   # 2'b10  (unassigned)
+VAL_ONE  = 3   # 2'b11
+VAL_U    = 1   # 2'b01  (unassigned)
 
 
 # ── Data structures ────────────────────────────────────────────────────────
@@ -76,8 +77,9 @@ def _lit_effective(val, pol):
 
 
 def _eval_clause(vals, pols, mls):
-    """Evaluate one 3-literal clause.  Mirrors processing_logic.sv exactly."""
-    effs = [_lit_effective(vals[i], pols[i]) for i in range(3)]
+    """Evaluate one clause.  Mirrors processing_logic.sv exactly.
+    Length of vals/pols/mls determines the literals-per-clause width."""
+    effs = [_lit_effective(vals[i], pols[i]) for i in range(len(vals))]
 
     done  = any(e == 'T' for e in effs)
     conf  = all(e == 'F' for e in effs) and not done
@@ -144,22 +146,24 @@ def _combine(clause_results):
 class HardwareModel(object):
     """Behavioural model of the sat_submodule CAM/SRAM array + evaluation."""
 
-    def __init__(self, num_clauses, vid_width=20):
-        self.num_clauses = num_clauses
-        self.num_rows    = 3 * num_clauses
-        self.vid_width   = vid_width
-        self.rows        = [Row() for _ in range(self.num_rows)]
+    def __init__(self, num_clauses, lits_per_clause=4, vid_width=20):
+        self.num_clauses     = num_clauses
+        self.lits_per_clause = lits_per_clause
+        self.num_rows        = lits_per_clause * num_clauses
+        self.vid_width       = vid_width
+        self.rows            = [Row() for _ in range(self.num_rows)]
 
     def _matchlines(self, search_vid):
         return [r.valid and (r.vid == search_vid) for r in self.rows]
 
     def _evaluate_all(self, mls):
         results = []
+        L = self.lits_per_clause
         for c in range(self.num_clauses):
-            base = 3 * c
-            vals      = [self.rows[base + i].val for i in range(3)]
-            pols      = [self.rows[base + i].pol for i in range(3)]
-            clause_ml = [mls[base + i]           for i in range(3)]
+            base = L * c
+            vals      = [self.rows[base + i].val for i in range(L)]
+            pols      = [self.rows[base + i].pol for i in range(L)]
+            clause_ml = [mls[base + i]           for i in range(L)]
             results.append(_eval_clause(vals, pols, clause_ml))
         return results
 
@@ -215,6 +219,12 @@ def dpll_solve(hw, max_decisions=100000):
     decision_stack = []
 
     all_vids = sorted(set(r.vid for r in hw.rows if r.valid))
+    # VID 0 is reserved for clause padding (matches the coprocessor convention).
+    # Pin x0=0 up front so padding literals evaluate to FALSE for the rest of
+    # the solve, then exclude VID 0 from decision picking.
+    has_padding = (0 in all_vids)
+    if has_padding:
+        all_vids = [v for v in all_vids if v != 0]
 
     def pick_unassigned():
         for vid in all_vids:
@@ -257,6 +267,9 @@ def dpll_solve(hw, max_decisions=100000):
 
         return False   # exhausted all decision levels → UNSAT
 
+    if has_padding:
+        record_bcp(0, VAL_ZERO, "PINPAD(x0=0)")
+
     decisions = 0
 
     while decisions < max_decisions:
@@ -274,7 +287,7 @@ def dpll_solve(hw, max_decisions=100000):
                 break
 
             if up:
-                up_row = 3 * cid + ulp
+                up_row = hw.lits_per_clause * cid + ulp
                 up_vid = hw.rows[up_row].vid
                 up_pol = hw.rows[up_row].pol
                 up_val = VAL_ONE if up_pol == 0 else VAL_ZERO
@@ -316,18 +329,29 @@ def dpll_solve(hw, max_decisions=100000):
 
 # ── Convenience wrapper ────────────────────────────────────────────────────
 
-def solve_cnf(clauses, num_clauses_hw, vid_width=20, max_decisions=100000):
+def solve_cnf(clauses, num_clauses_hw, lits_per_clause=4,
+              vid_width=20, max_decisions=100000):
     """Load clauses into a fresh HardwareModel and run DPLL.
 
-    clauses:        list of clauses; each clause is a list of (vid, pol) pairs.
-    num_clauses_hw: hardware array size (>= len(clauses), power of 2).
+    clauses:         list of clauses; each clause is a list of (vid, pol) pairs.
+    num_clauses_hw:  hardware array size (>= len(clauses), power of 2).
+    lits_per_clause: hardware literals-per-clause (default 4 to match RTL).
+
+    Clauses shorter than lits_per_clause are padded with (vid=0, pol=0); the
+    DPLL solver pins VID 0 to false up front so the padding does not interfere
+    with clause evaluation.
 
     Returns (sat, assignment, trace, hw).
     """
-    hw = HardwareModel(num_clauses=num_clauses_hw, vid_width=vid_width)
+    hw = HardwareModel(num_clauses=num_clauses_hw,
+                       lits_per_clause=lits_per_clause,
+                       vid_width=vid_width)
     for ci, clause in enumerate(clauses):
-        for li, (vid, pol) in enumerate(clause[:3]):
-            hw.load(3 * ci + li, vid, pol)
+        padded = list(clause[:lits_per_clause])
+        while len(padded) < lits_per_clause:
+            padded.append((0, 0))   # padding literal: x0 with positive polarity
+        for li, (vid, pol) in enumerate(padded):
+            hw.load(lits_per_clause * ci + li, vid, pol)
     sat, assignment, trace = dpll_solve(hw, max_decisions=max_decisions)
     return sat, assignment, trace, hw
 
@@ -336,7 +360,9 @@ def solve_cnf(clauses, num_clauses_hw, vid_width=20, max_decisions=100000):
 
 if __name__ == '__main__':
     def run(name, clauses, hw_size, expect):
-        sat, asgn, trace, _ = solve_cnf(clauses, num_clauses_hw=hw_size)
+        # Self-tests are written for the original 3-lit-per-clause geometry.
+        sat, asgn, trace, _ = solve_cnf(clauses, num_clauses_hw=hw_size,
+                                        lits_per_clause=3)
         result = 'SAT' if sat else ('UNSAT' if sat is False else 'TIMEOUT')
         ok = (result == expect)
         print("{} (expect {}): {}  [{}]  ops={}".format(
