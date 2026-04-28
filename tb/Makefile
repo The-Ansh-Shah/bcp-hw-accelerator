@@ -57,8 +57,8 @@ PLUSARGS = $(if $(TEST),+TEST=$(TEST),)
 
 .DEFAULT_GOAL := help
 .PHONY: help all clean \
-        sat 4sat 4sat-A 4sat-B 4sat-C array \
-        wave-sat wave-4sat wave-array
+        sat 4sat 4sat-A 4sat-B 4sat-C array array-large \
+        wave-sat wave-4sat wave-array wave-array-large
 
 help:
 	@echo "sat_submodule testbench runner"
@@ -72,13 +72,15 @@ help:
 	@echo "  make 4sat-A           Shorthand: only sub-test A"
 	@echo "  make 4sat-B           Shorthand: only sub-test B"
 	@echo "  make 4sat-C           Shorthand: only sub-test C"
-	@echo "  make array            sat_array hierarchy smoke test (sat_array_tb.sv)"
+	@echo "  make array            sat_array hierarchy smoke test (16 clauses)"
+	@echo "  make array-large      sat_array large-scale integration test (4096 clauses)"
 	@echo "  make all              Run every testbench"
 	@echo ""
 	@echo "View waveforms (after a run):"
 	@echo "  make wave-sat         Open sat_submodule_tb waveform in DVE"
 	@echo "  make wave-4sat        Open sat_submodule_4sat_tb waveform in DVE"
 	@echo "  make wave-array       Open sat_array_tb waveform in DVE"
+	@echo "  make wave-array-large Open sat_array_large_tb waveform in DVE"
 	@echo ""
 	@echo "Misc:"
 	@echo "  make clean            Remove all build artifacts (build/)"
@@ -100,6 +102,11 @@ $(BUILD)/array/simv: sat_array_tb.sv $(ARRAY_SRCS)
 	@mkdir -p $(BUILD)/array
 	$(ENV) cd $(BUILD)/array && vcs $(VCS_OPTS) -top sat_array_tb \
 	    $(ARRAY_SRCS_REL) ../../sat_array_tb.sv -o simv
+
+$(BUILD)/array-large/simv: sat_array_large_tb.sv $(ARRAY_SRCS)
+	@mkdir -p $(BUILD)/array-large
+	$(ENV) cd $(BUILD)/array-large && vcs $(VCS_OPTS) -top sat_array_tb \
+	    $(ARRAY_SRCS_REL) ../../sat_array_large_tb.sv -o simv
 
 # ── Run rules ────────────────────────────────────────────────────────────
 
@@ -127,6 +134,10 @@ array: $(BUILD)/array/simv
 	@echo "── Running sat_array_tb (hierarchy smoke test) ──"
 	@cd $(BUILD)/array && ./simv $(PLUSARGS)
 
+array-large: $(BUILD)/array-large/simv
+	@echo "── Running sat_array_large_tb (large-scale integration test) ──"
+	@cd $(BUILD)/array-large && ./simv $(PLUSARGS)
+
 # ── Waveform viewers ─────────────────────────────────────────────────────
 
 wave-sat: $(BUILD)/sat/simv
@@ -138,8 +149,13 @@ wave-4sat: $(BUILD)/4sat/simv
 wave-array: $(BUILD)/array/simv
 	@cd $(BUILD)/array && $(ENV) dve -full64 -vpd waves_array.vpd &
 
+wave-array-large: $(BUILD)/array-large/simv
+	@cd $(BUILD)/array-large && $(ENV) dve -full64 -vpd waves_array_large.vpd &
+
 # ── Aggregate ────────────────────────────────────────────────────────────
 
+# `all` runs the small sat_submodule TBs plus the small hierarchy smoke;
+# `array-large` is opt-in (longer elaboration / sim time).
 all: sat 4sat array
 
 clean:
