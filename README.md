@@ -55,9 +55,15 @@ bcp-hw-accelerator/
 │   ├── sample_counter_tb.v
 │   └── Makefile
 │
-├── tests/                      # Example CNF problems (DIMACS format)
+├── tests/                      # CNF problems (DIMACS format)
 │   ├── example.cnf                 # 7 vars, 4 clauses — SAT
-│   └── unsat_3var.cnf              # 3 vars, 8 clauses (all sign combos) — UNSAT
+│   ├── unsat_3var.cnf              # 3 vars, 8 clauses (all sign combos) — UNSAT
+│   └── satlib/                     # SATLIB Uniform Random-3-SAT benchmark suite
+│       ├── run_satlib.py               # Runner: regenerates the auto-TB per CNF and
+│       │                                #   builds + runs it against the live RTL
+│       ├── uf20-91/                    # 1000 SAT instances, 20 vars × 91 clauses
+│       ├── uf50-218/                   # 1000 SAT instances, 50 vars × 218 clauses
+│       └── uuf50-218/                  # 1000 UNSAT instances, 50 vars × 218 clauses
 │
 ├── dpll.py                     # Python behavioral model of the RTL (reference / testbench gen)
 ├── gen_cnf.py                  # Random 3-SAT problem generator
@@ -355,10 +361,42 @@ The `array-large` test elaborates 64 sub-SATs (8 groups × 8 sub-SATs each), tot
 # with NUM_GROUPS, so expect tens of minutes at full scale.
 ```
 
+#### SATLIB benchmark suite (Uniform Random-3-SAT)
+
+The `tests/satlib/` directory ships three Uniform Random-3-SAT collections from the [SATLIB Benchmark Problems page](https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html):
+
+| Set | Variables | Clauses | Instances | Expected |
+|-----|-----------|---------|-----------|----------|
+| `uf20-91`   |  20 |  91 | 1000 | SAT   |
+| `uf50-218`  |  50 | 218 | 1000 | SAT   |
+| `uuf50-218` |  50 | 218 | 1000 | UNSAT |
+
+Each instance is run by re-generating `tb/sat_submodule_tb.sv` from the SATLIB `.cnf` (via `gen_tb.py`, which executes the Python DPLL model to capture an expected per-step trace) and then driving the live RTL through that trace with `make sat`. PASS means the RTL agrees with the DPLL reference on every BCP / UNDO step in the trace.
+
+```bash
+cd tb
+
+make satlib                       # uf20-91 sample, default N=5, seed=0
+make satlib N=10                  # 10 instances
+make satlib N=20 SEED=42          # reproducible random sample
+
+make satlib-uf20                  # alias of `make satlib`
+make satlib-uf50                  # SAT, harder (50 vars at the phase transition)
+make satlib-uuf50                 # UNSAT, harder
+```
+
+The `gen_tb.py` parser tolerates SATLIB's trailing `%` line and uses 1-indexed VIDs with VID 0 reserved for padding, so SATLIB CNFs drop in directly.
+
+Notes:
+- **`uf20-91` is the reliably-runnable set today.** A 5-instance sample takes ≈ 60 s and produces 12 000+ per-step `PASS` checks across the trace.
+- **`uf50-218` / `uuf50-218` archives are checked in but not runnable through this flow yet.** `dpll.py` makes sequential decisions and detects CONF / DONE on `eval_idle()` but does *not* drive matchline-gated UP propagation back into its decision loop, so 50-variable instances explode the search and `gen_tb.py` does not return in reasonable time. The CNFs are still useful: feed them to the coprocessor (after rebuilding Verilator at a sufficient `NUM_CLAUSES`), or to a future dpll.py with proper UP propagation.
+- Each instance regenerates the testbench, which forces a VCS recompile (≈ 5 s) plus simulation.
+- To bring up an additional set, drop it into `tests/satlib/<setname>/` and add a `satlib-<setname>` Makefile target that calls `run_satlib.py <setname>`.
+
 #### Run everything
 
 ```bash
-make all             # sat + 4sat + array (small smoke).  array-large stays opt-in.
+make all             # sat + 4sat + array (small smoke).  array-large + satlib stay opt-in.
 ```
 
 #### View waveforms

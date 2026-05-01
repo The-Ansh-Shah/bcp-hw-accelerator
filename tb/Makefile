@@ -61,7 +61,12 @@ PLUSARGS = $(if $(TEST),+TEST=$(TEST),)
 .DEFAULT_GOAL := help
 .PHONY: help all clean \
         sat 4sat 4sat-A 4sat-B 4sat-C array array-large \
+        satlib satlib-uf20 satlib-uf50 satlib-uuf50 \
         wave-sat wave-4sat wave-array wave-array-large
+
+# SATLIB suite knobs (override on the command line, e.g. `make satlib N=10 SEED=42`).
+N    ?= 5
+SEED ?= 0
 
 help:
 	@echo "sat_submodule testbench runner"
@@ -77,6 +82,12 @@ help:
 	@echo "  make 4sat-C           Shorthand: only sub-test C"
 	@echo "  make array            sat_array hierarchy smoke test (16 clauses)"
 	@echo "  make array-large      sat_array large-scale integration test (4096 clauses)"
+	@echo "  make satlib           SATLIB Uniform Random-3-SAT sample (uf20-91, N=$(N))"
+	@echo "  make satlib-uf20      SATLIB uf20-91   (20 vars,  91 clauses, SAT) — works"
+	@echo "  make satlib-uf50      SATLIB uf50-218  (50 vars, 218 clauses, SAT) — best-effort"
+	@echo "  make satlib-uuf50     SATLIB uuf50-218 (50 vars, 218 clauses, UNSAT) — best-effort"
+	@echo "                          override sample count / seed:  make satlib N=10 SEED=42"
+	@echo "                          (uf50/uuf50 may timeout — dpll.py lacks UP propagation)"
 	@echo "  make all              Run every testbench"
 	@echo ""
 	@echo "View waveforms (after a run):"
@@ -140,6 +151,23 @@ array: $(BUILD)/array/simv
 array-large: $(BUILD)/array-large/simv
 	@echo "── Running sat_array_large_tb (large-scale integration test) ──"
 	@cd $(BUILD)/array-large && ./simv $(PLUSARGS)
+
+# ── SATLIB benchmark suite ───────────────────────────────────────────────
+# Each target re-runs gen_tb.py for every sampled .cnf and exercises the
+# auto-generated TB via `make sat`.  Override N=<count> / SEED=<seed> to
+# tune the sample.
+
+satlib satlib-uf20:
+	@echo "── SATLIB uf20-91 (20 vars, 91 clauses, SAT) — N=$(N) seed=$(SEED) ──"
+	@$(ENV) python3 ../tests/satlib/run_satlib.py uf20-91   -n $(N) --seed $(SEED)
+
+satlib-uf50:
+	@echo "── SATLIB uf50-218 (50 vars, 218 clauses, SAT) — N=$(N) seed=$(SEED) ──"
+	@$(ENV) python3 ../tests/satlib/run_satlib.py uf50-218  -n $(N) --seed $(SEED)
+
+satlib-uuf50:
+	@echo "── SATLIB uuf50-218 (50 vars, 218 clauses, UNSAT) — N=$(N) seed=$(SEED) ──"
+	@$(ENV) python3 ../tests/satlib/run_satlib.py uuf50-218 -n $(N) --seed $(SEED)
 
 # ── Waveform viewers ─────────────────────────────────────────────────────
 

@@ -74,6 +74,9 @@ def parse_dimacs(path):
             line = line.strip()
             if not line or line.startswith('c'):
                 continue
+            # SATLIB CNFs end with a `%` line followed by `0`; treat as EOF.
+            if line.startswith('%'):
+                break
             if line.startswith('p'):
                 parts = line.split()
                 num_vars = int(parts[2])
@@ -160,17 +163,25 @@ def generate_tb(clauses, num_vars, out_path, vid_width=20,
     load_lines.append("")
     load_lines.append('        $display("\\n-- LOAD --");')
     for ci in range(num_clauses_hw):
-        clause  = clauses[ci] if ci < num_clauses_raw else []
+        if ci >= num_clauses_raw:
+            # Padding clauses (slots beyond the original CNF) stay completely
+            # unloaded — their CAM rows keep valid=0 from reset, so matchlines
+            # never fire and the clause evaluator sees all-U literals.  This
+            # matches dpll.py's HardwareModel, which only loads real clauses.
+            load_lines.append(
+                "        // Clause {} (padding clause — unloaded)".format(ci))
+            load_lines.append("")
+            continue
+        clause  = clauses[ci]
         padded  = pad_clause(clause, lits_per_clause)
-        load_lines.append("        // Clause {}{}".format(
-            ci, " (padding)" if ci >= num_clauses_raw else ""))
+        load_lines.append("        // Clause {}".format(ci))
         for li, (vid, pol, valid) in enumerate(padded):
             row = ci * lits_per_clause + li
             if valid:
                 comment = "{}x{}  ({})".format(
                     '~' if pol else '', vid, 'neg' if pol else 'pos')
             else:
-                comment = "(unused slot — VID 0 padding)"
+                comment = "(in-clause padding — pinned to 0 by PINPAD)"
             load_lines.append(
                 "        load_row({:3d}, {}'d{}, 1'b{});  // C{} L{}: {}".format(
                     row, vid_width, vid, pol, ci, li, comment))
