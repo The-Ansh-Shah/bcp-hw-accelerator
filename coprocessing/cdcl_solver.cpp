@@ -8,10 +8,9 @@
 // backtracking all run in software.
 //
 // Hardware limits (fixed by the RTL elaboration in this directory):
-//   - 16 original clauses max (NUM_CLAUSES = 16)
+//   - 1024 clause slots (originals fill first; learnt clauses use SW path)
 //   - up to 4 literals per clause (shorter clauses are padded with an
 //     always-false literal stored at VID 0)
-// Learnt clauses are held in software and propagated by software scan.
 
 #include "Vsat_solver.h"
 #include "verilated.h"
@@ -49,7 +48,7 @@ static const int VAL_ONE  = 3;
 static const int VAL_U    = 1;
 
 // Built RTL dimensions (must match Verilator elaboration parameters)
-static const int HW_NUM_CLAUSES     = 16;
+static const int HW_NUM_CLAUSES     = 1024;
 static const int HW_LITS_PER_CLAUSE = 4;
 static const int HW_NUM_ROWS        = HW_LITS_PER_CLAUSE * HW_NUM_CLAUSES;
 
@@ -154,14 +153,11 @@ public:
         dut_->vid_in = vid;
         dut_->pol_in = pol;
         dut_->val_in = VAL_U;
-        tick_();  // S_IDLE -> S_LOAD  (addr_wr_en asserted combinationally)
-        tick_();  // S_LOAD -> S_IDLE; posedge latches vid/pol into CAM/SRAM row
+        tick_();  // S_IDLE -> S_LOAD
+        tick_();  // S_LOAD -> S_IDLE; posedge latches vid/pol/val into row
         idle_inputs_();
         if (std::getenv("SAT_DEBUG")) {
-            std::fprintf(stderr, "  load row=%d vid=%d pol=%d -> pol_stored[%d]=%d val_stored[%d]=%d\n",
-                row_addr, vid, pol,
-                row_addr, dut_->sat_submodule__DOT__pol_stored[row_addr],
-                row_addr, dut_->sat_submodule__DOT__val_stored[row_addr]);
+            std::fprintf(stderr, "  load row=%d vid=%d pol=%d\n", row_addr, vid, pol);
         }
     }
 
@@ -178,7 +174,7 @@ public:
         dut_->vid_in = vid;
         dut_->val_in = val;
         tick_();  // S_IDLE -> S_BCP1
-        tick_();  // S_BCP1 -> S_BCP2 (outputs latched)
+        tick_();  // S_BCP1 -> S_BCP2 (outputs valid)
         HWBCP r;
         r.conf       = dut_->conf_out;
         r.up         = dut_->up_out;
@@ -191,17 +187,6 @@ public:
             std::fprintf(stderr,
                 "  bcp(vid=%d,val=%d) -> conf=%d up=%d done=%d cid=%d ulp=%d up_vid=%d up_pol=%d\n",
                 vid, val, r.conf, r.up, r.done, r.cid, r.up_lit_pos, r.up_vid, r.up_pol);
-            std::fprintf(stderr, "    val_stored:");
-            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__val_stored[i]);
-            std::fprintf(stderr, "\n    ml_q:      ");
-            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__matchlines_q[i]);
-            std::fprintf(stderr, "\n    proc_conf: ");
-            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_conf[i]);
-            std::fprintf(stderr, "\n    proc_up:   ");
-            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_up[i]);
-            std::fprintf(stderr, "\n    proc_done: ");
-            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule__DOT__proc_done[i]);
-            std::fprintf(stderr, "\n");
         }
         idle_inputs_();
         tick_();  // S_BCP2 -> S_IDLE
@@ -212,8 +197,8 @@ public:
         dut_->op = OP_UNDO;
         dut_->vid_in = vid;
         dut_->val_in = VAL_U;
-        tick_();  // S_IDLE -> S_UNDO (search_en + cam_act_wr asserted combinationally)
-        tick_();  // S_UNDO -> S_IDLE; posedge writes VAL_U to matched rows via CAM-activated path
+        tick_();  // S_IDLE -> S_UNDO
+        tick_();  // S_UNDO -> S_IDLE; posedge writes VAL_U to matched rows
         idle_inputs_();
     }
 
@@ -229,7 +214,7 @@ public:
         }
         if (out.empty()) { unsat_at_load = true; return true; }
         if (static_cast<int>(originals.size()) >= HW_NUM_CLAUSES) {
-            std::cerr << "ERROR: too many clauses (> " << HW_NUM_CLAUSES
+            std::cerr << "ERROR: too many original clauses (> " << HW_NUM_CLAUSES
                       << "); RTL is fixed-size\n";
             return false;
         }
@@ -246,10 +231,7 @@ public:
                 Lit l = out[li];
                 load_hw_(HW_LITS_PER_CLAUSE * ci + li, lit_var(l), lit_pol(l));
             } else {
-                // Padding literal: VID 0, pol=0 (positive x0). We pin x0 to
-                // logic 0 via one BCP(0, VAL_ZERO) below, which makes the
-                // padded literal permanently false without affecting any
-                // real variable in the formula (DIMACS vars are 1-indexed).
+                // Padding: VID 0, pol=0. Pin x0 to false via postLoad_ BCP.
                 load_hw_(HW_LITS_PER_CLAUSE * ci + li, 0, 0);
                 use_padding = true;
             }
@@ -260,14 +242,8 @@ public:
     // Called once after every original clause is loaded.
     void postLoad_() {
         if (use_padding) {
-            // Pin padding literal to false. Return values are ignored: the
-            // only clauses that could signal here are ≤2-lit clauses that
-            // are unit with all vars still unassigned — we handle those
-            // via the SW unit-clause pass below.
             bcp_hw_(0, VAL_ZERO);
         }
-        // Enqueue any unit clauses at decision level 0 so the propagate()
-        // loop pushes them into the HW SRAM state on the first pass.
         for (size_t ci = 0; ci < originals.size(); ci++) {
             if (originals[ci].lits.size() == 1) {
                 Lit l = originals[ci].lits[0];
@@ -305,8 +281,7 @@ public:
         trail_lim.resize(lvl);
     }
 
-    // ── Propagation (HW for originals + SW for learnts) ──────────
-    // Returns the reason code of a conflict, or -1 for no conflict.
+    // ── Propagation — HW for originals, SW scan for learnts ─────
     int propagate() {
         while (qhead < static_cast<int>(trail.size())) {
             Lit l = trail[qhead++];
@@ -326,8 +301,8 @@ public:
         return -1;
     }
 
-    // Software BCP for learnt clauses (HW is full). Linear scan per call —
-    // fine for small clause counts; use 2-watched literals for scale.
+    // Software BCP for learnt clauses. Linear scan — acceptable for moderate
+    // learnt-clause counts; 2-watched literals would be needed at scale.
     int propagateLearnts_() {
         for (size_t li = 0; li < learnts.size(); li++) {
             const vector<Lit>& c = learnts[li].lits;
@@ -412,7 +387,6 @@ public:
     }
 
     // ── Main CDCL loop ───────────────────────────────────────────
-    // Returns 1 on SAT, 0 on UNSAT.
     int solve() {
         postLoad_();
         if (unsat_at_load) return 0;
@@ -484,7 +458,6 @@ static bool parseDIMACS(const string& path, Solver& S) {
 }
 
 int main(int argc, char** argv) {
-    Verilated::commandArgs(argc, argv);
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <cnf_file>\n";
         return 1;
