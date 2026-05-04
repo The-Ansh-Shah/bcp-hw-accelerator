@@ -8,11 +8,14 @@
 // backtracking all run in software.
 //
 // Hardware limits (fixed by the RTL elaboration in this directory):
-//   - 1024 clause slots (originals fill first; learnt clauses use SW path)
-//   - up to 4 literals per clause (shorter clauses are padded with an
-//     always-false literal stored at VID 0)
+//   - 1024 clauses max (NUM_CLAUSES = 1024, covers all SATLIB instances
+//     up to ~250 originals + learned clauses)
+//   - up to 4 literals per clause (shorter clauses are loaded partially;
+//     the behavioral RTL treats unloaded rows as always-false so no padding
+//     literals are needed)
 
 #include "Vsat_solver.h"
+#include "Vsat_solver_sat_submodule.h"
 #include "verilated.h"
 
 #include <algorithm>
@@ -84,6 +87,7 @@ public:
     int num_vars = 0;
     vector<Clause>  originals;
     vector<Clause>  learnts;
+    vector<uint8_t> learnt_in_hw;  // 1 if learnt clause is loaded faithfully into HW
     vector<uint8_t> assigns;      // size num_vars+1
     vector<int>     level;
     vector<int>     reason_;
@@ -94,6 +98,10 @@ public:
     double          var_inc = 1.0;
     double          var_decay = 0.95;
 
+    // n_orig_ is frozen after postLoad_(): distinguishes original CIDs from
+    // learnt CIDs when decoding cid_out returned by the HW.
+    int             n_orig_ = 0;
+
     uint64_t n_decisions = 0;
     uint64_t n_conflicts = 0;
     uint64_t n_propagations = 0;
@@ -101,7 +109,6 @@ public:
     uint64_t n_hw_undo = 0;
     uint64_t n_hw_load = 0;
     bool     unsat_at_load = false;
-    bool     use_padding = false;
 
     // ── Public API ───────────────────────────────────────────────
     void setNumVars(int n) {
@@ -149,15 +156,18 @@ public:
     void load_hw_(int row_addr, int vid, int pol) {
         n_hw_load++;
         dut_->op = OP_LOAD;
-        dut_->row_addr = row_addr;
+        dut_->row_addr = static_cast<uint16_t>(row_addr);
         dut_->vid_in = vid;
         dut_->pol_in = pol;
         dut_->val_in = VAL_U;
         tick_();  // S_IDLE -> S_LOAD
-        tick_();  // S_LOAD -> S_IDLE; posedge latches vid/pol/val into row
+        tick_();  // S_LOAD -> S_IDLE; posedge latches vid/pol/val into storage
         idle_inputs_();
         if (std::getenv("SAT_DEBUG")) {
-            std::fprintf(stderr, "  load row=%d vid=%d pol=%d\n", row_addr, vid, pol);
+            std::fprintf(stderr, "  load row=%d vid=%d pol=%d -> pol_store[%d]=%d val_store[%d]=%d\n",
+                row_addr, vid, pol,
+                row_addr, dut_->sat_submodule->pol_store[row_addr],
+                row_addr, dut_->sat_submodule->val_store[row_addr]);
         }
     }
 
@@ -174,7 +184,7 @@ public:
         dut_->vid_in = vid;
         dut_->val_in = val;
         tick_();  // S_IDLE -> S_BCP1
-        tick_();  // S_BCP1 -> S_BCP2 (outputs valid)
+        tick_();  // S_BCP1 -> S_BCP2 (outputs latched)
         HWBCP r;
         r.conf       = dut_->conf_out;
         r.up         = dut_->up_out;
@@ -187,11 +197,32 @@ public:
             std::fprintf(stderr,
                 "  bcp(vid=%d,val=%d) -> conf=%d up=%d done=%d cid=%d ulp=%d up_vid=%d up_pol=%d\n",
                 vid, val, r.conf, r.up, r.done, r.cid, r.up_lit_pos, r.up_vid, r.up_pol);
+            std::fprintf(stderr, "    val_store:");
+            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule->val_store[i]);
+            std::fprintf(stderr, "\n    ml_q:     ");
+            for (int i = 0; i < HW_NUM_ROWS; i++) std::fprintf(stderr, " %d", dut_->sat_submodule->ml_q[i]);
+            std::fprintf(stderr, "\n    proc_conf:");
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule->proc_conf[i]);
+            std::fprintf(stderr, "\n    proc_up:  ");
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule->proc_up[i]);
+            std::fprintf(stderr, "\n    proc_done:");
+            for (int i = 0; i < HW_NUM_CLAUSES; i++) std::fprintf(stderr, " %d", dut_->sat_submodule->proc_done[i]);
+            std::fprintf(stderr, "\n");
         }
         idle_inputs_();
         tick_();  // S_BCP2 -> S_IDLE
         return r;
     }
+    // Pre-set val_store for all rows of vid so the HW combinational logic
+    // sees the variable as assigned. Used to "consume" a reported UP before
+    // re-issuing bcp_hw_ for the same (vid,val) to find additional UPs.
+    void setValInHW_(int vid, int val_code) {
+        for (int row = 0; row < HW_NUM_ROWS; row++) {
+            if (dut_->sat_submodule->vid_store[row] == static_cast<uint32_t>(vid))
+                dut_->sat_submodule->val_store[row] = static_cast<uint8_t>(val_code);
+        }
+    }
+
     void undo_hw_(int vid) {
         n_hw_undo++;
         dut_->op = OP_UNDO;
@@ -213,42 +244,67 @@ public:
             out.push_back(c[i]);
         }
         if (out.empty()) { unsat_at_load = true; return true; }
-        if (static_cast<int>(originals.size()) >= HW_NUM_CLAUSES) {
-            std::cerr << "ERROR: too many original clauses (> " << HW_NUM_CLAUSES
-                      << "); RTL is fixed-size\n";
-            return false;
-        }
-        if (out.size() > static_cast<size_t>(HW_LITS_PER_CLAUSE)) {
-            std::cerr << "ERROR: clause has " << out.size()
-                      << " lits; RTL supports at most " << HW_LITS_PER_CLAUSE << "\n";
-            return false;
-        }
         int ci = static_cast<int>(originals.size());
         Clause cl; cl.lits = out;
         originals.push_back(cl);
-        for (int li = 0; li < HW_LITS_PER_CLAUSE; li++) {
-            if (li < static_cast<int>(out.size())) {
+
+        if (ci < HW_NUM_CLAUSES) {
+            if (out.size() > static_cast<size_t>(HW_LITS_PER_CLAUSE)) {
+                std::cerr << "ERROR: clause has " << out.size()
+                          << " lits; RTL supports at most " << HW_LITS_PER_CLAUSE << "\n";
+                return false;
+            }
+            // Load only real literals. Behavioral RTL treats unloaded rows
+            // (row_valid=0) as always-false, so no padding literals are needed.
+            for (int li = 0; li < static_cast<int>(out.size()); li++) {
                 Lit l = out[li];
                 load_hw_(HW_LITS_PER_CLAUSE * ci + li, lit_var(l), lit_pol(l));
-            } else {
-                // Padding: VID 0, pol=0. Pin x0 to false via postLoad_ BCP.
-                load_hw_(HW_LITS_PER_CLAUSE * ci + li, 0, 0);
-                use_padding = true;
             }
         }
         return true;
     }
 
+    // Load a learnt clause into HW at slot (n_orig_ + li).
+    void loadLearntHW_(int li, const vector<Lit>& lits) {
+        if (li >= static_cast<int>(learnt_in_hw.size())) return;
+        learnt_in_hw[li] = 0;
+        int hw_ci = n_orig_ + li;
+        // Only load learnt clauses the RTL can represent exactly. Silently
+        // truncating a wider clause would strengthen it and break soundness.
+        if (hw_ci >= HW_NUM_CLAUSES) {
+            std::fprintf(stderr, "c WARNING: learnt clause %d overflows HW (%d slots, %d originals)\n",
+                         li, HW_NUM_CLAUSES, n_orig_);
+            return;
+        }
+        if (lits.size() > static_cast<size_t>(HW_LITS_PER_CLAUSE)) return;
+        for (int i = 0; i < static_cast<int>(lits.size()); i++) {
+            Lit l = lits[i];
+            int v   = lit_var(l);
+            int row = HW_LITS_PER_CLAUSE * hw_ci + i;
+            load_hw_(row, v, lit_pol(l));
+            // Body literals are already assigned (false) at the backtrack level but
+            // their new row starts as VAL_U from load_hw_. They won't be updated by
+            // HW BCP until re-propagated, causing missed UPs. Patch val_store directly.
+            if (assigns[v] != L_UNDEF) {
+                dut_->sat_submodule->val_store[row] =
+                    (assigns[v] == L_TRUE) ? static_cast<uint8_t>(VAL_ONE)
+                                           : static_cast<uint8_t>(VAL_ZERO);
+            }
+        }
+        learnt_in_hw[li] = 1;
+    }
+
     // Called once after every original clause is loaded.
     void postLoad_() {
-        if (use_padding) {
-            bcp_hw_(0, VAL_ZERO);
-        }
+        n_orig_ = static_cast<int>(originals.size());
+        // Enqueue any unit clauses at decision level 0.
         for (size_t ci = 0; ci < originals.size(); ci++) {
             if (originals[ci].lits.size() == 1) {
                 Lit l = originals[ci].lits[0];
                 if (lit_false_(l)) { unsat_at_load = true; return; }
-                if (lit_undef_(l)) enqueue(l, static_cast<int>(ci));
+                if (lit_undef_(l) && !enqueue(l, static_cast<int>(ci))) {
+                    unsat_at_load = true; return;
+                }
             }
         }
     }
@@ -281,43 +337,62 @@ public:
         trail_lim.resize(lvl);
     }
 
-    // ── Propagation — HW for originals, SW scan for learnts ─────
+    // ── Propagation ──────────────────────────────────────────────
+    // Returns the reason code of a conflict, or -1 for no conflict.
+    // All clauses (originals + learnts that fit) live in HW.
+    // cid_out in [0, n_orig_) = original; [n_orig_, 1024) = learnt.
     int propagate() {
         while (qhead < static_cast<int>(trail.size())) {
             Lit l = trail[qhead++];
             n_propagations++;
             int v   = lit_var(l);
             int val = (l > 0) ? VAL_ONE : VAL_ZERO;
-            HWBCP r = bcp_hw_(v, val);
-            if (r.conf) return r.cid;
-            if (r.up) {
-                Lit impl = (r.up_pol == 0) ? static_cast<Lit>(r.up_vid)
-                                           : -static_cast<Lit>(r.up_vid);
-                if (!enqueue(impl, r.cid)) return r.cid;
+
+            // Loop until the HW reports no more events for this assignment.
+            // One bcp_hw_ call returns at most one UP; multiple clauses may
+            // become unit simultaneously, so we consume each UP by writing
+            // its value into val_store (making that clause proc_done=1) and
+            // re-issue BCP to find the next unit clause.
+            for (;;) {
+                HWBCP r = bcp_hw_(v, val);
+                int reason_code = (r.cid >= n_orig_)
+                                    ? encode_learnt(r.cid - n_orig_)
+                                    : r.cid;
+                if (r.conf) return reason_code;
+                if (r.up) {
+                    int up_val = (r.up_pol == 0) ? VAL_ONE : VAL_ZERO;
+                    setValInHW_(r.up_vid, up_val);
+                    Lit impl = (r.up_pol == 0) ? static_cast<Lit>(r.up_vid)
+                                               : -static_cast<Lit>(r.up_vid);
+                    if (!enqueue(impl, reason_code)) return reason_code;
+                } else {
+                    break;
+                }
             }
-            int lc = propagateLearnts_();
+
+            int lc = propagateLearntsSW_();
             if (lc != -1) return encode_learnt(lc);
         }
         return -1;
     }
 
-    // Software BCP for learnt clauses. Linear scan — acceptable for moderate
-    // learnt-clause counts; 2-watched literals would be needed at scale.
-    int propagateLearnts_() {
-        for (size_t li = 0; li < learnts.size(); li++) {
+    // SW BCP for learnts not represented in HW: either they overflow the
+    // learnt-clause slots or are wider than the RTL can encode faithfully.
+    int propagateLearntsSW_() {
+        for (int li = 0; li < static_cast<int>(learnts.size()); li++) {
+            if (li < static_cast<int>(learnt_in_hw.size()) && learnt_in_hw[li]) continue;
             const vector<Lit>& c = learnts[li].lits;
             int num_u = 0;
             Lit u_lit = 0;
             bool sat = false;
-            for (Lit l : c) {
-                if (lit_true_(l)) { sat = true; break; }
-                if (lit_undef_(l)) { num_u++; u_lit = l; }
+            for (Lit lt : c) {
+                if (lit_true_(lt)) { sat = true; break; }
+                if (lit_undef_(lt)) { num_u++; u_lit = lt; }
             }
             if (sat) continue;
-            if (num_u == 0) return static_cast<int>(li);
+            if (num_u == 0) return li;
             if (num_u == 1) {
-                if (!enqueue(u_lit, encode_learnt(static_cast<int>(li))))
-                    return static_cast<int>(li);
+                if (!enqueue(u_lit, encode_learnt(li))) return li;
             }
         }
         return -1;
@@ -362,6 +437,7 @@ public:
             counter--;
             if (counter <= 0) break;
         }
+        assert(p != 0);  // degenerate trail — propagation invariant violated
         out_learnt[0] = -p;
     }
 
@@ -387,6 +463,7 @@ public:
     }
 
     // ── Main CDCL loop ───────────────────────────────────────────
+    // Returns 1 on SAT, 0 on UNSAT.
     int solve() {
         postLoad_();
         if (unsat_at_load) return 0;
@@ -402,6 +479,8 @@ public:
                 int li = static_cast<int>(learnts.size());
                 Clause lc; lc.lits = learnt;
                 learnts.push_back(lc);
+                learnt_in_hw.push_back(0);
+                loadLearntHW_(li, learnt);
                 enqueue(learnt[0], encode_learnt(li));
                 decayVarActivity();
             } else {
@@ -458,6 +537,7 @@ static bool parseDIMACS(const string& path, Solver& S) {
 }
 
 int main(int argc, char** argv) {
+    Verilated::commandArgs(argc, argv);
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <cnf_file>\n";
         return 1;

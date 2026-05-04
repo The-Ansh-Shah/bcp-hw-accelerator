@@ -5,29 +5,35 @@ endif
 VINC = $(VERILATOR_ROOT)/include
 
 CXX      ?= g++
-CXXFLAGS  = -O2 -std=c++14 -Wall -Wno-unused-parameter \
+CXXFLAGS  = -O2 -std=c++14 -faligned-new -Wall -Wno-unused-parameter \
             -I. -I$(VINC) -I$(VINC)/vltstd
 
-# Flat behavioral model → no per-submodule class (no cam_sram_row file).
-# After re-verilating on the server, check which .cpp files were generated
-# and update VOBJS accordingly.  The two files below cover Verilator 4.x;
-# Verilator 5.x splits into more files (see Vsat_solver_classes.mk).
-VOBJS   = Vsat_solver.o Vsat_solver__Syms.o
-GLBOBJS = verilated.o
+# v4 Verilator generated objects for the behavioral sat_submodule (NUM_CLAUSES=1024)
+VOBJS   = Vsat_solver.o Vsat_solver_sat_submodule.o Vsat_solver__Dpi.o Vsat_solver__Syms.o
+GLBOBJS = verilated.o verilated_dpi.o
 
 cdcl_solver: cdcl_solver.o $(VOBJS) $(GLBOBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lpthread
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-cdcl_solver.o: cdcl_solver.cpp Vsat_solver.h
+cdcl_solver.o: cdcl_solver.cpp Vsat_solver.h Vsat_solver_sat_submodule.h
 	$(CXX) $(CXXFLAGS) -c -o $@ cdcl_solver.cpp
 
 Vsat_solver.o: Vsat_solver.cpp Vsat_solver.h
 	$(CXX) $(CXXFLAGS) -c -o $@ Vsat_solver.cpp
 
+Vsat_solver_sat_submodule.o: Vsat_solver_sat_submodule.cpp Vsat_solver_sat_submodule.h
+	$(CXX) $(CXXFLAGS) -c -o $@ Vsat_solver_sat_submodule.cpp
+
+Vsat_solver__Dpi.o: Vsat_solver__Dpi.cpp Vsat_solver__Dpi.h
+	$(CXX) $(CXXFLAGS) -c -o $@ Vsat_solver__Dpi.cpp
+
 Vsat_solver__Syms.o: Vsat_solver__Syms.cpp Vsat_solver__Syms.h
 	$(CXX) $(CXXFLAGS) -c -o $@ Vsat_solver__Syms.cpp
 
 verilated.o: $(VINC)/verilated.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+verilated_dpi.o: $(VINC)/verilated_dpi.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 run: cdcl_solver

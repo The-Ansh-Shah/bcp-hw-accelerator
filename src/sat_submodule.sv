@@ -67,10 +67,13 @@ module sat_submodule #(
     logic [1:0] proc_ulp  [NUM_CLAUSES];
 
     // Intermediate per-clause packed truth-value bits
-    logic [LITS_PER_CLAUSE-1:0] c_lit_u  [NUM_CLAUSES];
-    logic [LITS_PER_CLAUSE-1:0] c_lit_t  [NUM_CLAUSES];
-    logic [LITS_PER_CLAUSE-1:0] c_lit_f  [NUM_CLAUSES];
-    logic                       c_ml_any [NUM_CLAUSES];
+    logic [LITS_PER_CLAUSE-1:0] c_lit_u    [NUM_CLAUSES];
+    logic [LITS_PER_CLAUSE-1:0] c_lit_t    [NUM_CLAUSES];
+    logic [LITS_PER_CLAUSE-1:0] c_lit_f    [NUM_CLAUSES];
+    logic                       c_ml_any   [NUM_CLAUSES];
+    // At least one row in this clause is loaded (gates proc_conf to avoid
+    // false conflicts on unloaded/empty clause slots).
+    logic                       c_any_valid[NUM_CLAUSES];
 
     // ── Combining outputs (combinational) ────────────────────────────────────
     logic              tree_conf;
@@ -90,21 +93,29 @@ module sat_submodule #(
     // ── Processing logic — one entry per clause, purely combinational ────────
     always_comb begin
         for (int c = 0; c < NUM_CLAUSES; c++) begin
-            c_ml_any[c] = 1'b0;
+            c_ml_any[c]    = 1'b0;
+            c_any_valid[c] = 1'b0;
             for (int i = 0; i < LITS_PER_CLAUSE; i++) begin
                 automatic int r = LITS_PER_CLAUSE * c + i;
                 c_lit_u[c][i] = row_valid[r] & (val_store[r] == VAL_U);
-                // lit true:  not unassigned AND val[0] == ~pol (pol=0→need ONE; pol=1→need ZERO)
+                // lit true:  valid row, not unassigned, val matches ~pol
                 c_lit_t[c][i] = row_valid[r] & ~c_lit_u[c][i]
                                 & (val_store[r][0] == ~pol_store[r]);
-                // lit false: not unassigned AND val[0] ==  pol
-                c_lit_f[c][i] = row_valid[r] & ~c_lit_u[c][i]
-                                & (val_store[r][0] ==  pol_store[r]);
-                c_ml_any[c]  |= ml_q[r];
+                // lit false: invalid row (pad as false) OR valid+assigned matching pol.
+                // Treating unloaded rows as false allows short clauses (<4 lits) to
+                // detect conf/UP without needing padding literal loads.
+                c_lit_f[c][i] = ~row_valid[r]
+                                | (~c_lit_u[c][i] & (val_store[r][0] == pol_store[r]));
+                c_ml_any[c]    |= ml_q[r];
+                c_any_valid[c] |= row_valid[r];
             end
 
             proc_done[c] = |c_lit_t[c];
-            proc_conf[c] = &c_lit_f[c];
+            // Report conflicts only for clauses touched by the current CAM hit.
+            // This keeps repeated BCP calls local to the assignment being
+            // expanded; implied literals written directly into val_store are
+            // picked up when their own BCP step executes.
+            proc_conf[c] = c_any_valid[c] & c_ml_any[c] & &c_lit_f[c];
 
             // UP: exactly one unassigned, all others false, a matchline was hit
             proc_up[c] = (c_lit_u[c] == LITS_PER_CLAUSE'(1) ||
@@ -165,11 +176,11 @@ module sat_submodule #(
             state       <= S_IDLE;
             cit_lit_idx <= '0;
             for (int r = 0; r < NUM_ROWS; r++) begin
-                vid_store[r] <= '0;
-                pol_store[r] <= 1'b0;
-                val_store[r] <= VAL_U;
-                row_valid[r] <= 1'b0;
-                ml_q[r]      <= 1'b0;
+                vid_store[r] = '0;
+                pol_store[r] = 1'b0;
+                val_store[r] = VAL_U;
+                row_valid[r] = 1'b0;
+                ml_q[r]      = 1'b0;
             end
         end else begin
             case (state)
@@ -188,10 +199,10 @@ module sat_submodule #(
 
                 S_LOAD: begin
                     // Write addressed row; value initialised to unassigned
-                    vid_store[row_addr] <= vid_in;
-                    pol_store[row_addr] <= pol_in;
-                    val_store[row_addr] <= VAL_U;
-                    row_valid[row_addr] <= 1'b1;
+                    vid_store[row_addr] = vid_in;
+                    pol_store[row_addr] = pol_in;
+                    val_store[row_addr] = VAL_U;
+                    row_valid[row_addr] = 1'b1;
                     state               <= S_IDLE;
                 end
 
@@ -200,10 +211,10 @@ module sat_submodule #(
                     // latch matchlines for use by processing logic in BCP2.
                     for (int r = 0; r < NUM_ROWS; r++) begin
                         if (row_valid[r] && vid_store[r] == vid_in) begin
-                            val_store[r] <= val_in;
-                            ml_q[r]      <= 1'b1;
+                            val_store[r] = val_in;
+                            ml_q[r]      = 1'b1;
                         end else begin
-                            ml_q[r]      <= 1'b0;
+                            ml_q[r]      = 1'b0;
                         end
                     end
                     state <= S_BCP2;
@@ -219,7 +230,7 @@ module sat_submodule #(
                     // CAM search: restore VAL_U to every row whose VID matches.
                     for (int r = 0; r < NUM_ROWS; r++) begin
                         if (row_valid[r] && vid_store[r] == vid_in) begin
-                            val_store[r] <= VAL_U;
+                            val_store[r] = VAL_U;
                         end
                     end
                     state <= S_IDLE;
@@ -245,9 +256,9 @@ module sat_submodule #(
     always_comb begin
         rd_row = '0;
         if (state == S_BCP2 && tree_up) begin
-            rd_row = ROW_ADDR_W'(LITS_PER_CLAUSE * tree_cid + tree_ulp);
+            rd_row = ROW_ADDR_W'(LITS_PER_CLAUSE * tree_cid + 32'(tree_ulp));
         end else if (state == S_CIT) begin
-            rd_row = ROW_ADDR_W'(LITS_PER_CLAUSE * cid_in + cit_lit_idx);
+            rd_row = ROW_ADDR_W'(LITS_PER_CLAUSE * cid_in + 32'(cit_lit_idx));
         end
     end
 

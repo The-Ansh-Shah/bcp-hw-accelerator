@@ -2,82 +2,95 @@
 // DESCRIPTION: Verilator output: Design internal header
 // See Vsat_solver.h for the primary calling header
 
-#ifndef VERILATED_VSAT_SOLVER_SAT_SUBMODULE_H_
-#define VERILATED_VSAT_SOLVER_SAT_SUBMODULE_H_  // guard
+#ifndef _VSAT_SOLVER_SAT_SUBMODULE_H_
+#define _VSAT_SOLVER_SAT_SUBMODULE_H_  // guard
 
 #include "verilated.h"
+#include "Vsat_solver__Dpi.h"
 
+//==========
 
 class Vsat_solver__Syms;
 
-class alignas(VL_CACHE_LINE_BYTES) Vsat_solver_sat_submodule final {
-  public:
+//----------
 
-    // DESIGN SPECIFIC STATE
-    CData/*0:0*/ clk;
-    CData/*0:0*/ rst_n;
-    CData/*2:0*/ op;
-    CData/*0:0*/ phase;
-    CData/*1:0*/ val_in;
-    CData/*0:0*/ pol_in;
-    CData/*0:0*/ conf_out;
-    CData/*0:0*/ up_out;
-    CData/*0:0*/ done_out;
-    CData/*1:0*/ up_lit_pos;
-    CData/*0:0*/ pol_out;
-    CData/*0:0*/ valid_out;
+VL_MODULE(Vsat_solver_sat_submodule) {
+  public:
+    
+    // PORTS
+    VL_IN8(clk,0,0);
+    VL_IN8(rst_n,0,0);
+    VL_IN8(op,2,0);
+    VL_IN8(phase,0,0);
+    VL_IN8(val_in,1,0);
+    VL_IN8(pol_in,0,0);
+    VL_OUT8(conf_out,0,0);
+    VL_OUT8(up_out,0,0);
+    VL_OUT8(done_out,0,0);
+    VL_OUT8(up_lit_pos,1,0);
+    VL_OUT8(pol_out,0,0);
+    VL_OUT8(valid_out,0,0);
+    VL_IN16(row_addr,11,0);
+    VL_IN16(cid_in,9,0);
+    VL_OUT16(cid_out,9,0);
+    VL_IN(vid_in,19,0);
+    VL_OUT(vid_out,19,0);
+    
+    // LOCAL SIGNALS
     CData/*0:0*/ __PVT__tree_conf;
     CData/*0:0*/ __PVT__tree_up;
     CData/*0:0*/ __PVT__tree_done;
     CData/*1:0*/ __PVT__tree_ulp;
     CData/*2:0*/ __PVT__state;
     CData/*1:0*/ __PVT__cit_lit_idx;
-    SData/*11:0*/ row_addr;
-    SData/*9:0*/ cid_in;
-    SData/*9:0*/ cid_out;
     SData/*9:0*/ __PVT__tree_cid;
     SData/*11:0*/ __PVT__rd_row;
-    IData/*19:0*/ vid_in;
-    IData/*19:0*/ vid_out;
+    IData/*31:0*/ __PVT__unnamedblk1__DOT__c;
     IData/*31:0*/ __PVT__unnamedblk1__DOT__unnamedblk2__DOT__unnamedblk3__DOT__r;
+    IData/*31:0*/ __PVT__unnamedblk4__DOT__i;
     IData/*31:0*/ __PVT__unnamedblk5__DOT__i;
     IData/*31:0*/ __PVT__unnamedblk6__DOT__i;
     IData/*31:0*/ __PVT__unnamedblk8__DOT__r;
     IData/*31:0*/ __PVT__unnamedblk9__DOT__r;
     IData/*31:0*/ __PVT__unnamedblk7__DOT__r;
-    VlUnpacked<IData/*19:0*/, 4096> vid_store;
-    VlUnpacked<CData/*0:0*/, 4096> pol_store;
-    VlUnpacked<CData/*1:0*/, 4096> val_store;
-    VlUnpacked<CData/*0:0*/, 4096> __PVT__row_valid;
-    VlUnpacked<CData/*0:0*/, 4096> ml_q;
-    VlUnpacked<CData/*0:0*/, 1024> proc_conf;
-    VlUnpacked<CData/*0:0*/, 1024> proc_up;
-    VlUnpacked<CData/*0:0*/, 1024> proc_done;
-    VlUnpacked<CData/*1:0*/, 1024> __PVT__proc_ulp;
-    VlUnpacked<CData/*3:0*/, 1024> __PVT__c_lit_u;
-    VlUnpacked<CData/*3:0*/, 1024> __PVT__c_lit_t;
-    VlUnpacked<CData/*3:0*/, 1024> __PVT__c_lit_f;
-    VlUnpacked<CData/*0:0*/, 1024> __PVT__c_ml_any;
-    VlNBACommitQueue<VlUnpacked<CData/*1:0*/, 4096>, false, CData/*1:0*/, 1> __VdlyCommitQueueval_store;
-    VlNBACommitQueue<VlUnpacked<CData/*0:0*/, 4096>, false, CData/*0:0*/, 1> __VdlyCommitQueueml_q;
-    VlNBACommitQueue<VlUnpacked<IData/*19:0*/, 4096>, false, IData/*19:0*/, 1> __VdlyCommitQueuevid_store;
-    VlNBACommitQueue<VlUnpacked<CData/*0:0*/, 4096>, false, CData/*0:0*/, 1> __VdlyCommitQueuepol_store;
-    VlNBACommitQueue<VlUnpacked<CData/*0:0*/, 4096>, false, CData/*0:0*/, 1> __VdlyCommitQueuerow_valid;
-
+    IData/*19:0*/ vid_store[4096];
+    CData/*0:0*/ pol_store[4096];
+    CData/*1:0*/ val_store[4096];
+    CData/*0:0*/ __PVT__row_valid[4096];
+    CData/*0:0*/ ml_q[4096];
+    CData/*0:0*/ proc_conf[1024];
+    CData/*0:0*/ proc_up[1024];
+    CData/*0:0*/ proc_done[1024];
+    CData/*1:0*/ __PVT__proc_ulp[1024];
+    CData/*3:0*/ __PVT__c_lit_u[1024];
+    CData/*3:0*/ __PVT__c_lit_t[1024];
+    CData/*3:0*/ __PVT__c_lit_f[1024];
+    CData/*0:0*/ __PVT__c_ml_any[1024];
+    CData/*0:0*/ __PVT__c_any_valid[1024];
+    
     // INTERNAL VARIABLES
-    Vsat_solver__Syms* vlSymsp;
-    const char* vlNamep;
-
+  private:
+    Vsat_solver__Syms* __VlSymsp;  // Symbol table
+  public:
+    
     // CONSTRUCTORS
-    Vsat_solver_sat_submodule();
+  private:
+    VL_UNCOPYABLE(Vsat_solver_sat_submodule);  ///< Copying not allowed
+  public:
+    Vsat_solver_sat_submodule(const char* name = "TOP");
     ~Vsat_solver_sat_submodule();
-    void ctor(Vsat_solver__Syms* symsp, const char* namep);
-    void dtor();
-    VL_UNCOPYABLE(Vsat_solver_sat_submodule);
-
+    
     // INTERNAL METHODS
-    void __Vconfigure(bool first);
-};
+    void __Vconfigure(Vsat_solver__Syms* symsp, bool first);
+    static void _combo__TOP__sat_submodule__3(Vsat_solver__Syms* __restrict vlSymsp);
+  private:
+    void _ctor_var_reset() VL_ATTR_COLD;
+  public:
+    static void _sequent__TOP__sat_submodule__1(Vsat_solver__Syms* __restrict vlSymsp);
+    static void _settle__TOP__sat_submodule__2(Vsat_solver__Syms* __restrict vlSymsp) VL_ATTR_COLD;
+} VL_ATTR_ALIGNED(VL_CACHE_LINE_BYTES);
+
+//----------
 
 
 #endif  // guard

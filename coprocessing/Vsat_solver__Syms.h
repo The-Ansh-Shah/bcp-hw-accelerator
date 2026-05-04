@@ -4,42 +4,39 @@
 // Internal details; most calling programs do not need this header,
 // unless using verilator public meta comments.
 
-#ifndef VERILATED_VSAT_SOLVER__SYMS_H_
-#define VERILATED_VSAT_SOLVER__SYMS_H_  // guard
+#ifndef _VSAT_SOLVER__SYMS_H_
+#define _VSAT_SOLVER__SYMS_H_  // guard
 
 #include "verilated.h"
 
-// INCLUDE MODEL CLASS
-
-#include "Vsat_solver.h"
-
 // INCLUDE MODULE CLASSES
-#include "Vsat_solver___024root.h"
+#include "Vsat_solver.h"
 #include "Vsat_solver_sat_submodule.h"
 
 // DPI TYPES for DPI Export callbacks (Internal use)
 
-// SYMS CLASS (contains all model state)
-class alignas(VL_CACHE_LINE_BYTES) Vsat_solver__Syms final : public VerilatedSyms {
+// SYMS CLASS
+class Vsat_solver__Syms : public VerilatedSyms {
   public:
-    // INTERNAL STATE
-    Vsat_solver* const __Vm_modelp;
-    VlDeleter __Vm_deleter;
-    bool __Vm_didInit = false;
-
-    // MODULE INSTANCE STATE
-    Vsat_solver___024root          TOP;
+    
+    // LOCAL STATE
+    const char* __Vm_namep;
+    bool __Vm_didInit;
+    
+    // SUBCELL STATE
+    Vsat_solver*                   TOPp;
     Vsat_solver_sat_submodule      TOP__sat_submodule;
-
+    
     // SCOPE NAMES
-    VerilatedScope* __Vscopep_sat_submodule;
-
-    // CONSTRUCTORS
-    Vsat_solver__Syms(VerilatedContext* contextp, const char* namep, Vsat_solver* modelp);
-    ~Vsat_solver__Syms();
-
+    VerilatedScope __Vscope_sat_submodule;
+    
+    // CREATORS
+    Vsat_solver__Syms(Vsat_solver* topp, const char* namep);
+    ~Vsat_solver__Syms() {}
+    
     // METHODS
-    const char* name() const { return TOP.vlNamep; }
-};
+    inline const char* name() { return __Vm_namep; }
+    
+} VL_ATTR_ALIGNED(VL_CACHE_LINE_BYTES);
 
 #endif  // guard
