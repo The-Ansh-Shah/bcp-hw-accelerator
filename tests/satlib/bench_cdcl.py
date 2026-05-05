@@ -19,6 +19,7 @@ import argparse
 import csv
 import os
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -56,9 +57,12 @@ def run_one(cnf_path: Path, solver: Path, timeout: int) -> dict:
         "conflicts":    None,
         "propagations": None,
         "hw_bcp":       None,
+        "hw_undo":      None,
+        "hw_load":      None,
         "hw_bcp_cycles":None,
         "bcp_time_ns":  None,
         "sw_time_ns":   None,
+        "cyc_per_prop": None,
         "status":       "?",
         "hw_overflow":  False,
     }
@@ -105,6 +109,8 @@ def run_one(cnf_path: Path, solver: Path, timeout: int) -> dict:
         result["conflicts"]    = int(m.group(4))
         result["propagations"] = int(m.group(5))
         result["hw_bcp"]       = int(m.group(6))
+        result["hw_undo"]      = int(m.group(7))
+        result["hw_load"]      = int(m.group(8))
 
     m = _RE_HW_TIME.search(stderr)
     if m:
@@ -114,6 +120,9 @@ def run_one(cnf_path: Path, solver: Path, timeout: int) -> dict:
     m = _RE_SW_TIME.search(stderr)
     if m:
         result["sw_time_ns"] = float(m.group(1))
+
+    if result["hw_bcp_cycles"] is not None and result["propagations"]:
+        result["cyc_per_prop"] = result["hw_bcp_cycles"] / result["propagations"]
 
     return result
 
@@ -208,9 +217,11 @@ def main():
           + (f"  kissat={kissat}" if kissat else ""))
 
     if kissat:
-        print(f"{'SET':<20} {'FILE':<24} {'OK':<7} "
-              f"{'HW_ns':>9} {'HW+SW_us':>10} {'KISSAT_us':>10} {'WINNER':>8}")
-        print("-" * 95)
+        print(f"{'SET':<14} {'FILE':<22} {'OK':<5} "
+              f"{'DEC':>5} {'CNFL':>5} {'LRN':>5} {'PROP':>5} {'BCP':>5} "
+              f"{'UNDO':>5} {'LOAD':>5} {'CYC/P':>6} "
+              f"{'HW_ns':>8} {'HW+SW_us':>9} {'KS_us':>8} {'WIN':>6}")
+        print("-" * 140)
     else:
         print(f"{'SET':<24} {'FILE':<26} {'EXP':<6} {'GOT':<6} {'OK':<7} "
               f"{'WALL':>7} {'HW_BCP':>7} {'BCP_ns':>9} {'SW_ns':>12}")
@@ -265,9 +276,15 @@ def main():
             bcp_str   = f"{bcp_ns:.0f}"   if bcp_ns  else "?"
             hwsw_str  = f"{hw_sw_us:.1f}" if hw_sw_us else "?"
             ks_str    = f"{ks_us:.1f}"    if ks_us is not None else "?"
+            cp_str    = f"{r['cyc_per_prop']:.2f}" if r['cyc_per_prop'] is not None else "?"
 
-            print(f"{r['set']:<20} {r['file']:<24} {ok_str:<7} "
-                  f"{bcp_str+'ns':>9} {hwsw_str+'us':>10} {ks_str+'us':>10} {winner:>8}")
+            def _s(v): return str(v) if v is not None else "?"
+            print(f"{r['set']:<14} {r['file']:<22} {ok_str:<5} "
+                  f"{_s(r['decisions']):>5} {_s(r['conflicts']):>5} "
+                  f"{_s(r['learnts']):>5} {_s(r['propagations']):>5} "
+                  f"{_s(r['hw_bcp']):>5} {_s(r['hw_undo']):>5} {_s(r['hw_load']):>5} "
+                  f"{cp_str:>6} "
+                  f"{bcp_str+'ns':>8} {hwsw_str+'us':>9} {ks_str+'us':>8} {winner:>6}")
         else:
             print(f"{r['set']:<24} {r['file']:<26} {r['expect']:<6} "
                   f"{str(r['got'] or '?'):<6} {ok_str:<7} "
@@ -283,11 +300,42 @@ def main():
         summary += f"  |  HW-BCP wins={n_hw_wins}  kissat wins={n_ks_wins}"
     print(summary)
 
+    def _dist(name, vals, fmt="{:.2f}"):
+        vals = [v for v in vals if v is not None]
+        if not vals:
+            print(f"  {name:<22} (no data)")
+            return
+        vals_s = sorted(vals)
+        n = len(vals_s)
+        p50  = statistics.median(vals_s)
+        p95  = vals_s[max(0, int(0.95 * (n - 1)))]
+        mean = statistics.mean(vals_s)
+        print(f"  {name:<22} n={n:<4} min={fmt.format(vals_s[0]):>8} "
+              f"p50={fmt.format(p50):>8} mean={fmt.format(mean):>8} "
+              f"p95={fmt.format(p95):>8} max={fmt.format(vals_s[-1]):>8}")
+
+    print()
+    print("Distribution across instances:")
+    _dist("decisions",      [r['decisions']      for r in all_results], "{:.0f}")
+    _dist("conflicts",      [r['conflicts']      for r in all_results], "{:.0f}")
+    _dist("learnts",        [r['learnts']        for r in all_results], "{:.0f}")
+    _dist("propagations",   [r['propagations']   for r in all_results], "{:.0f}")
+    _dist("hw_bcp ops",     [r['hw_bcp']         for r in all_results], "{:.0f}")
+    _dist("hw_undo ops",    [r['hw_undo']        for r in all_results], "{:.0f}")
+    _dist("hw_load ops",    [r['hw_load']        for r in all_results], "{:.0f}")
+    _dist("hw_bcp_cycles",  [r['hw_bcp_cycles']  for r in all_results], "{:.0f}")
+    _dist("cycles/prop",    [r['cyc_per_prop']   for r in all_results], "{:.3f}")
+    if kissat:
+        _dist("kissat_wall_us", [r['kissat_wall_s']*1e6 if r['kissat_wall_s'] else None
+                                 for r in all_results], "{:.0f}")
+
     if kissat:
         print()
         print("NOTE: HW_ns = projected hardware BCP time at 1GHz (hw_bcp_cycles × 1ns).")
         print("      HW+SW_us adds sw_cdcl_time which is dominated by Verilated simulation")
         print("      overhead and overstates true coprocessor SW cost.")
+        print("      CYC/P (cycles per propagation) is the architecture-level FOM and")
+        print("      does NOT depend on Fmax — use this for HW-vs-HW comparisons.")
 
     if args.csv:
         fields = list(all_results[0].keys())

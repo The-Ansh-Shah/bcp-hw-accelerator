@@ -71,7 +71,7 @@ The C++ coprocessor already tracks `n_hw_bcp`, `n_hw_undo`, `n_hw_load`. Each ma
 
 **Wrapper `bench/run_hw.py`:** runs `coprocessing/cdcl_solver` on each manifest instance, parses the new stats line, writes `results/hw.csv`.
 
-**Headline metric for HW-vs-HW comparison:** `hw_cycles / n_propagations` ("cycles per implication"). This is directly comparable to numbers reported by published hardware SAT solvers (e.g., Davis et al., Skliarova-Sklyarov FPGA SAT) and is the most defensible comparison because it doesn't depend on Fmax — it's a pure architectural figure-of-merit.
+**Headline metric for HW-vs-HW comparison:** `hw_cycles / n_propagations` ("cycles per implication"). This is directly comparable to numbers reported by published ASIC hardware SAT solvers (e.g., Davis et al.) and is the most defensible comparison because it doesn't depend on Fmax — it's a pure architectural figure-of-merit.
 
 ---
 
@@ -113,7 +113,7 @@ Generate four plots in `report/`:
    HW projected time = `hw_cycles / Fmax_from_synthesis`.
    Honest caveat in caption: "HW time excludes the software CDCL loop and Verilator simulation overhead; SW time is the entire solve including I/O."
 
-2. **Cycles-per-propagation** (vs published HW solvers) — table comparing our number against Davis et al. (UCSB hw SAT 2008), Skliarova-Sklyarov FPGA SAT, and any other accelerator that reports cycles/implication. **This is the most defensible HW-vs-HW comparison and does NOT depend on synthesis numbers — produce it in Phase 3 already.**
+2. **Cycles-per-propagation** (vs published HW solvers) — table comparing our number against Davis et al. (UCSB hw SAT 2008) and any other ASIC accelerator that reports cycles/implication. **This is the most defensible HW-vs-HW comparison and does NOT depend on synthesis numbers — produce it in Phase 3 already.**
 
 3. **Operation breakdown** (stacked bars: LOAD vs BCP vs UNDO cycles per instance). Shows where time is spent and exposes the LOAD overhead at small problem sizes.
 
