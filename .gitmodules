@@ -1,0 +1,12 @@
+[submodule "kissat"]
+	path = kissat
+	url = https://github.com/arminbiere/kissat.git
+[submodule "minisat"]
+	path = minisat
+	url = https://github.com/stp/minisat.git
+[submodule "minisat2"]
+	path = minisat2
+	url = https://github.com/stp/minisat.git
+[submodule "glucose"]
+	path = glucose
+	url = https://github.com/audemard/glucose.git

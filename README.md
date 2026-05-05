@@ -11,6 +11,68 @@ Two RTL paths exist side-by-side:
 
 ---
 
+## First-Time Setup (Fresh Clone)
+
+The repository pulls in four reference SAT solvers as git submodules so the coprocessor can be benchmarked against published software solvers. Run these once after cloning:
+
+```bash
+# 1. Clone with submodules (or initialize them after the fact)
+git clone --recurse-submodules <repo-url>
+cd bcp-hw-accelerator
+
+# If you already cloned without --recurse-submodules:
+git submodule update --init --recursive
+```
+
+The submodules are:
+
+| Submodule | Upstream | Role |
+|-----------|----------|------|
+| [kissat/](kissat/)     | `arminbiere/kissat`        | Current SAT-Competition winner; SOTA reference |
+| [glucose/](glucose/)   | `audemard/glucose`         | LBD-based CDCL, improved restart strategy |
+| [minisat/](minisat/)   | `stp/minisat`              | Classic CDCL baseline (1-UIP + VSIDS), closest in style to our coprocessor |
+| [minisat2/](minisat2/) | `stp/minisat`              | Alternate MiniSat checkout slot (kept separate so a different revision/build flag set can be evaluated independently) |
+
+### Build the coprocessor
+
+```bash
+cd coprocessing
+make
+cd ..
+```
+
+This produces `coprocessing/cdcl_solver`. The Verilated C++ files are pre-generated and checked in; `make` only compiles + links. **No VCS or Verilator install required for the coprocessor** — only `g++` and the Verilator runtime headers (already vendored under `coprocessing/`).
+
+### Build the baseline solvers
+
+```bash
+# Kissat
+( cd kissat   && ./configure && make -j )            # → kissat/build/kissat
+
+# Glucose (parallel + sequential)
+( cd glucose  && cd simp && make -j )                # → glucose/simp/glucose
+
+# MiniSat 2.2
+( cd minisat  && make -j )                           # → minisat/build/release/bin/minisat
+( cd minisat2 && make -j )                           # → minisat2/build/release/bin/minisat
+```
+
+After these complete, the binaries [kissat/build/kissat](kissat/build/kissat), [glucose/simp/glucose](glucose/simp/glucose), [minisat/build/release/bin/minisat](minisat/build/release/bin/minisat), and [minisat2/build/release/bin/minisat](minisat2/build/release/bin/minisat) are what the benchmark harness in [§ Benchmarking](#benchmarking) drives.
+
+### (Optional) RTL simulation prerequisites
+
+Only needed if you'll run anything under [tb/](tb/) or [sim/](sim/): Synopsys VCS. On Berkeley EECS instructional machines, the project's [eecs151source.bashrc](eecs151source.bashrc) handles the environment automatically — see [§ RTL Simulation (VCS)](#rtl-simulation-vcs).
+
+### Smoke test
+
+```bash
+./coprocessing/cdcl_solver tests/example.cnf       # expect: s SATISFIABLE
+./coprocessing/cdcl_solver tests/unsat_3var.cnf    # expect: s UNSATISFIABLE
+./kissat/build/kissat tests/example.cnf            # expect: s SATISFIABLE
+```
+
+---
+
 ## Directory Structure
 
 ```
@@ -52,6 +114,8 @@ bcp-hw-accelerator/
 │       ├── uf20-91/                # 1000 SAT instances, 20 vars × 91 clauses
 │       ├── uf50-218/               # 1000 SAT instances, 50 vars × 218 clauses
 │       └── uuf50-218/              # 1000 UNSAT instances, 50 vars × 218 clauses
+│
+├── kissat/    minisat/    minisat2/    glucose/   # Baseline SAT solvers (git submodules)
 │
 ├── dpll.py                     # Python behavioral model of the RTL
 ├── gen_cnf.py                  # Random 3-SAT problem generator
@@ -323,6 +387,93 @@ A 5-instance `uf20-91` sample takes ≈ 60 s and produces 12 000+ per-step `PASS
 ./coprocessing/cdcl_solver tests/satlib/uf50-218/uf50-01.cnf
 ./coprocessing/cdcl_solver tests/satlib/uuf50-218/uuf50-01.cnf
 ```
+
+---
+
+## Benchmarking
+
+The coprocessor is compared against three software CDCL solvers (Kissat, Glucose, MiniSat) and against itself on a hardware-cycle metric. The four solver submodules listed in [§ First-Time Setup](#first-time-setup-fresh-clone) are the baselines.
+
+### Solvers under comparison
+
+| Binary | Path | What it represents |
+|--------|------|-------------------|
+| `cdcl_solver`  | `coprocessing/cdcl_solver`           | Our HW-accelerated CDCL (this project) |
+| `minisat` | `minisat/build/release/bin/minisat`  | Classic CDCL — closest peer to our software loop |
+| `minisat` | `minisat2/build/release/bin/minisat` | Alternate MiniSat checkout (e.g., different build flags) |
+| `glucose` | `glucose/simp/glucose`               | LBD-based CDCL, restart heuristic improvements |
+| `kissat`  | `kissat/build/kissat`                | SAT-Competition SOTA reference |
+
+All four read DIMACS CNF directly and print the standard `s SATISFIABLE` / `s UNSATISFIABLE` plus per-solver statistics. Wall-clock numbers come from `/usr/bin/time -v` (or `time` builtins); decision/conflict/propagation counts are parsed from each solver's stdout.
+
+### Two metrics, two purposes
+
+**1. Wall-clock (software-vs-software, today).** Run each solver on the same instance set; compare end-to-end runtime and RSS. The coprocessor's wall-clock includes Verilator simulation overhead, so it is *expected* to lose to native-C software solvers on this metric until we project HW-cycle counts through synthesized Fmax (see below). This comparison is still useful to confirm decision/conflict/propagation counts are in the same regime as MiniSat (which our 1-UIP + VSIDS loop is patterned after).
+
+**2. Per-propagation cycle count (HW-vs-published-HW, Fmax-independent).** This is the primary defensible figure-of-merit for the hardware. The coprocessor tracks `n_hw_load`, `n_hw_bcp`, `n_hw_undo`; mapping each to its FSM cycle count from [src/sat_submodule.sv](src/sat_submodule.sv):
+
+| Op    | Cycles | FSM path |
+|-------|--------|----------|
+| LOAD  | 2      | `S_IDLE → S_LOAD → S_IDLE` |
+| BCP   | 3      | `S_IDLE → S_BCP1 → S_BCP2 → S_IDLE` |
+| UNDO  | 2      | `S_IDLE → S_UNDO → S_IDLE` |
+
+so total `hw_cycles = 2*hw_load + 3*hw_bcp + 2*hw_undo`. The headline figure is **`hw_cycles / propagations` ("cycles per implication")** — directly comparable to numbers reported by published ASIC SAT-solver papers and independent of Fmax / process node.
+
+Once TSMC 65 nm synthesis completes (see [benchmarkingplan.md](benchmarkingplan.md)), `hw_time = hw_cycles / Fmax` converts the cycle counts to wall-clock for the wall-clock comparison.
+
+### Running a single instance against every solver
+
+```bash
+INSTANCE=tests/satlib/uf20-91/uf20-01.cnf
+
+/usr/bin/time -v ./coprocessing/cdcl_solver         "$INSTANCE"
+/usr/bin/time -v ./kissat/build/kissat              "$INSTANCE"
+/usr/bin/time -v ./glucose/simp/glucose             "$INSTANCE"
+/usr/bin/time -v ./minisat/build/release/bin/minisat "$INSTANCE"
+```
+
+The coprocessor's stderr line
+
+```
+c originals=91 learnts=… decisions=… conflicts=… propagations=… hw_bcp=… hw_undo=… hw_load=…
+```
+
+is what feeds the cycle-per-implication metric.
+
+### Running a benchmark suite
+
+The simplest reproducible suite is SATLIB `uf20-91` (small enough that every solver finishes in milliseconds, large enough to give stable medians):
+
+```bash
+for cnf in tests/satlib/uf20-91/uf20-0{1,2,3,4,5}.cnf; do
+  echo "=== $cnf ==="
+  /usr/bin/time -f "wall=%e rss=%M"  ./coprocessing/cdcl_solver "$cnf" 2>&1 | tail -2
+  /usr/bin/time -f "wall=%e rss=%M"  ./kissat/build/kissat        "$cnf" 2>&1 | tail -2
+  /usr/bin/time -f "wall=%e rss=%M"  ./glucose/simp/glucose       "$cnf" 2>&1 | tail -2
+done
+```
+
+Repeat 10× per instance to get stable medians (sub-millisecond runtimes are noise-dominated otherwise) and aggregate into a CSV — that CSV is what the final report draws from.
+
+For the harder 50-variable sets:
+
+```bash
+./coprocessing/cdcl_solver tests/satlib/uf50-218/uf50-01.cnf       # SAT
+./coprocessing/cdcl_solver tests/satlib/uuf50-218/uuf50-01.cnf     # UNSAT
+./kissat/build/kissat       tests/satlib/uuf50-218/uuf50-01.cnf
+```
+
+Note: the coprocessor's pre-generated Verilator model is sized for `NUM_CLAUSES = 16`; instances with more original clauses than the hardware capacity require a Verilator regeneration at a larger `NUM_CLAUSES` (see [§ Regenerating the Verilated model](#regenerating-the-verilated-model)).
+
+### Why four solver submodules
+
+- **MiniSat** is the algorithmic peer — our software loop implements the same 1-UIP analysis and VSIDS heuristic. If the coprocessor's decision/conflict/propagation counts diverge wildly from MiniSat's, that's a bug in our CDCL, not a property of the hardware.
+- **Glucose** stresses LBD-driven clause management; it tells us whether more aggressive learnt-clause policies would buy anything for instances at our capacity.
+- **Kissat** is the SOTA upper bound — anything Kissat solves much faster than us *and* MiniSat indicates algorithmic ceiling, not hardware ceiling.
+- **minisat2** is a second checkout slot for evaluating a different MiniSat revision or build configuration in parallel without disturbing the primary baseline.
+
+The full methodology — instance-set curation, repeat counts, ratio-of-ratios analysis, and TSMC 65 nm synthesis numbers — lives in [benchmarkingplan.md](benchmarkingplan.md).
 
 ---
 
