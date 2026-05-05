@@ -1,23 +1,48 @@
-# VCS compiled simulation binary
+# VCS compiled simulation binaries
 simv
+simv_*
+!simv_*.sv
+!simv_*.v
 
 # VCS build artifacts
 simv.daidir/
+simv_*.daidir/
 csrc/
 DVEfiles/
-
-# UCI license key
 ucli.key
 
 # Waveform dumps
 *.vpd
+*.vcd
+*.fsdb
 
-# Synopsys VCS lint/log files
+# Synopsys VCS lint/log/intermediate files
 *.log
+*.key
+*.tmp
+vc_hdrs.h
+novas.*
+verdiLog/
+
+# Per-testbench build trees
+tb/build/
+sim/build/
+
+# Test / simulation result artifacts
+output/
+results/
+*.out
+*.results
+*.summary
+*.csv
+
+# Python caches
+__pycache__/
+*.pyc
 
 # AI-agent scratch files (progress handoffs, session state, local config)
 PROGRESS.md
 .claude/
 CLAUDE.md
 .cursorrules
-.aider*kissat/
+.aider*
