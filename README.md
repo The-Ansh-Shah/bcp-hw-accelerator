@@ -52,12 +52,22 @@ This produces `coprocessing/cdcl_solver`. The Verilated C++ files are pre-genera
 # Glucose (parallel + sequential)
 ( cd glucose  && cd simp && make -j )                # → glucose/simp/glucose
 
-# MiniSat 2.2
-( cd minisat  && make -j )                           # → minisat/build/release/bin/minisat
-( cd minisat2 && make -j )                           # → minisat2/build/release/bin/minisat
+# MiniSat 2.2 — patch out the hardcoded `--static` link flag first
+# (the Makefile statically links libstdc++/libz/libm/libc, which the EECS
+# instructional machines don't ship as .a archives), then build the release
+# (dynamic) binary only.
+sed -i.bak 's/--static //' minisat/Makefile minisat2/Makefile
+( cd minisat  && make r -j )                         # → minisat/build/release/bin/minisat
+( cd minisat2 && make r -j )                         # → minisat2/build/release/bin/minisat
 ```
 
 After these complete, the binaries [kissat/build/kissat](kissat/build/kissat), [glucose/simp/glucose](glucose/simp/glucose), [minisat/build/release/bin/minisat](minisat/build/release/bin/minisat), and [minisat2/build/release/bin/minisat](minisat2/build/release/bin/minisat) are what the benchmark harness in [§ Benchmarking](#benchmarking) drives.
+
+**Why the MiniSat patch is needed.** Line 99 of `minisat/Makefile` reads
+```make
+$(BUILD_DIR)/release/bin/$(MINISAT):		MINISAT_LDFLAGS += --static $(MINISAT_RELSYM)
+```
+which forces a fully static link. On a system without `libz.a`, `libstdc++.a`, `libm.a`, `libc.a` (typical for non-development distros and our EECS machines), this fails with `cannot find -lz / -lstdc++ / -lm / -lc`. The `sed` above strips `--static` so the binary dynamically links those system libraries instead. The resulting `minisat` is functionally identical for benchmarking — only the deployment-time linkage differs. Using `make r` (instead of bare `make`) also skips the `lr`/`lsh` library-only targets you don't need.
 
 ### (Optional) RTL simulation prerequisites
 
@@ -110,7 +120,8 @@ bcp-hw-accelerator/
 │   ├── example.cnf                 # 7 vars, 4 clauses — SAT
 │   ├── unsat_3var.cnf              # 3 vars, 8 clauses — UNSAT
 │   └── satlib/                     # SATLIB Uniform Random-3-SAT benchmark suite
-│       ├── run_satlib.py
+│       ├── run_satlib.py           # Drives gen_tb.py + VCS for the RTL trace flow
+│       ├── bench_cdcl.py           # Runs cdcl_solver (+ kissat/minisat/glucose) with full metrics
 │       ├── uf20-91/                # 1000 SAT instances, 20 vars × 91 clauses
 │       ├── uf50-218/               # 1000 SAT instances, 50 vars × 218 clauses
 │       └── uuf50-218/              # 1000 UNSAT instances, 50 vars × 218 clauses
@@ -350,37 +361,112 @@ make -C tb sat
 
 ## Benchmarks: SATLIB Uniform Random-3-SAT
 
-The `tests/satlib/` directory ships three Uniform Random-3-SAT collections from the [SATLIB Benchmark Problems page](https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html):
+The `tests/satlib/` directory ships three Uniform Random-3-SAT collections from the [SATLIB Benchmark Problems page](https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html), all sitting at the α ≈ 4.27 phase-transition ratio where random 3-SAT is hardest:
 
-| Set | Variables | Clauses | Instances | Expected | Notes |
-|-----|-----------|---------|-----------|----------|-------|
-| `uf20-91`   |  20 |  91 | 1000 | SAT   | Reliably-runnable through the RTL trace flow today |
-| `uf50-218`  |  50 | 218 | 1000 | SAT   | Phase-transition ratio; runnable via the coprocessor |
-| `uuf50-218` |  50 | 218 | 1000 | UNSAT | Phase-transition ratio; runnable via the coprocessor |
+| Set | Variables | Clauses | Instances | Expected |
+|-----|-----------|---------|-----------|----------|
+| `uf20-91`   |  20 |  91 | 1000 | SAT   |
+| `uf50-218`  |  50 | 218 | 1000 | SAT   |
+| `uuf50-218` |  50 | 218 | 1000 | UNSAT |
 
-All three sets sit at α ≈ 4.27, the SAT phase-transition ratio where random 3-SAT is hardest. `uf*` sets are crafted SAT, `uuf*` are crafted UNSAT.
+`uf*` sets are crafted SAT, `uuf*` crafted UNSAT. `bench_cdcl.py` infers the expected result automatically from the directory name (`uu*` → UNSAT, otherwise SAT).
 
-### Running through the Verilog trace flow (uf20-91)
+Two harness scripts cover the two flows:
 
-Each instance is run by re-generating `tb/sat_submodule_tb.sv` from the SATLIB `.cnf` (via `gen_tb.py`, which executes the Python DPLL model to capture an expected per-step trace) and then driving the live RTL through that trace. PASS means the RTL agrees with the DPLL reference on every BCP / UNDO step.
+| Script | What it drives | Use when |
+|--------|----------------|----------|
+| [tests/satlib/run_satlib.py](tests/satlib/run_satlib.py)   | `gen_tb.py` → VCS RTL trace flow | Validating the **RTL** matches the Python DPLL reference step-for-step |
+| [tests/satlib/bench_cdcl.py](tests/satlib/bench_cdcl.py)   | `cdcl_solver` (+ optional baselines) | Measuring **coprocessor performance** vs Kissat / Glucose / MiniSat |
+
+---
+
+## RTL Trace-Flow Validation (`run_satlib.py`)
+
+For each sampled `.cnf` the script regenerates `tb/sat_submodule_tb.sv` via `gen_tb.py` (which runs the Python DPLL model to capture an expected per-step trace), then builds + runs the testbench through `make -C tb sat`. PASS means the RTL trace agrees with the DPLL reference on every BCP / UNDO step.
 
 ```bash
-cd tb
+python3 tests/satlib/run_satlib.py uf20-91 -n 5                  # 5 instances, default seed
+python3 tests/satlib/run_satlib.py uf50-218 -n 3 --seed 1         # reproducible sample
+python3 tests/satlib/run_satlib.py uuf50-218 -n 3 --max-decisions 5000
 
-make satlib                       # uf20-91 sample, default N=5, seed=0
-make satlib N=10                  # 10 instances
-make satlib N=20 SEED=42          # reproducible random sample
-
-make satlib-uf20                  # alias of `make satlib`
-make satlib-uf50                  # SAT, harder
-make satlib-uuf50                 # UNSAT, harder
+# Equivalent through the tb/Makefile:
+make -C tb satlib N=5 SEED=42
+make -C tb satlib-uf20      # alias of `make satlib`
+make -C tb satlib-uf50      # SAT, harder
+make -C tb satlib-uuf50     # UNSAT, harder
 ```
 
-A 5-instance `uf20-91` sample takes ≈ 60 s and produces 12 000+ per-step `PASS` checks across the trace. Each instance regenerates the testbench, which forces a VCS recompile (≈ 5 s) plus simulation.
+A 5-instance `uf20-91` sample takes ≈ 60 s and produces 12 000+ per-step `PASS` checks. Each instance regenerates the testbench, forcing a VCS recompile (≈ 5 s) plus simulation.
 
-`uf50-218` and `uuf50-218` archives are checked in but not runnable through the trace flow yet — `dpll.py` does not drive matchline-gated UP back into its decision loop, so 50-variable instances explode the search and `gen_tb.py` does not return in reasonable time. Run them via the coprocessor instead (after rebuilding Verilator at sufficient `NUM_CLAUSES`).
+The 50-variable sets are usable here but stress the DPLL reference: `dpll.py` doesn't drive matchline-gated UP back into its decision loop, so the search can explode at the phase transition. `--max-decisions` caps the budget so `gen_tb.py` returns in reasonable time. For pure performance benchmarking on those sets, prefer `bench_cdcl.py` below.
 
-### Running through the coprocessor
+---
+
+## Coprocessor Benchmarking (`bench_cdcl.py`)
+
+[tests/satlib/bench_cdcl.py](tests/satlib/bench_cdcl.py) is the primary benchmarking harness. It walks any subset of SATLIB directories, runs `cdcl_solver` on every `.cnf`, optionally runs Kissat / Glucose / MiniSat on the same instances, and tabulates per-instance metrics plus distribution stats (min / p50 / mean / p95 / max).
+
+### Quick start (coprocessor only)
+
+```bash
+python3 tests/satlib/bench_cdcl.py --sets "uf20-91"
+python3 tests/satlib/bench_cdcl.py --sets "uf20-91,uuf50-218" --timeout 10 --csv results.csv
+```
+
+### Head-to-head against software baselines
+
+Pass any combination of `--kissat`, `--minisat2`, `--glucose` to add columns for those solvers. The harness already strips SATLIB's trailing `%/0` line before handing the CNF to each solver.
+
+```bash
+python3 tests/satlib/bench_cdcl.py \
+    --sets "uf20-91" \
+    --kissat   kissat/build/kissat \
+    --minisat2 minisat2/build/release/bin/minisat \
+    --glucose  glucose/simp/glucose \
+    --timeout 10 \
+    --csv      results/uf20-91.csv
+```
+
+### Output columns
+
+For each instance the table reports:
+
+| Column | Meaning |
+|--------|---------|
+| `OK`        | `✓` = correct, `✗` = wrong answer, `T` / `T+OVF` = timeout (with HW overflow flag), `E` = error |
+| `DEC` `CNFL` `LRN` `PROP` | decisions, conflicts, learnt clauses, propagations (parsed from `cdcl_solver` stderr) |
+| `BCP` `UNDO` `LOAD`       | hardware-op counts |
+| `CYC/P`     | `hw_cycles / propagations` — Fmax-independent architecture FOM |
+| `HW_ns`     | projected HW time at 1 GHz (`(load+bcp+undo) × 1 ns`) |
+| `SW_us`     | pure CDCL software time, Verilator overhead removed |
+| `TOT_us`    | `HW_ns + SW_us` — projected total coprocessor solve time |
+| `KISSAT_us` `MINISAT2_us` `GLUCOSE_us` | each solver's self-reported CPU time |
+| `WIN`       | `HW` if `TOT_us` beats every SW solver; otherwise the winning SW solver name |
+
+The trailing distribution block (`min / p50 / mean / p95 / max`) summarizes each metric across the suite, which is the headline number the final report cites.
+
+### What the cycle counts come from
+
+`cdcl_solver` tracks `n_hw_load`, `n_hw_bcp`, `n_hw_undo` and emits a `c hw_cycles=… hw_time=…ns sw_time=…ns` line that `bench_cdcl.py` parses. The cycle weights come from the [src/sat_submodule.sv](src/sat_submodule.sv) FSM:
+
+| Op | Cycles | FSM path |
+|----|--------|----------|
+| LOAD | 2 | `S_IDLE → S_LOAD → S_IDLE` |
+| BCP  | 3 | `S_IDLE → S_BCP1 → S_BCP2 → S_IDLE` |
+| UNDO | 2 | `S_IDLE → S_UNDO → S_IDLE` |
+
+Total `hw_cycles = 2·hw_load + 3·hw_bcp + 2·hw_undo`. **`CYC/P = hw_cycles / propagations`** is the headline figure-of-merit — directly comparable to numbers reported by published ASIC SAT-solver papers, independent of Fmax and process node. Once TSMC 65 nm synthesis lands (see [benchmarkingplan.md](benchmarkingplan.md)), `hw_time = hw_cycles / Fmax` converts cycles to wall-clock.
+
+### Why four solver submodules
+
+- **MiniSat** is the algorithmic peer — our software loop implements the same 1-UIP analysis and VSIDS heuristic. If our decision/conflict/propagation counts diverge wildly from MiniSat's, that's a bug in our CDCL, not a property of the hardware.
+- **Glucose** stresses LBD-driven clause management; tells us whether more aggressive learnt-clause policies would buy anything at our capacity.
+- **Kissat** is the SOTA upper bound — anything Kissat beats us *and* MiniSat at indicates algorithmic ceiling, not hardware ceiling.
+- **minisat2** is a second MiniSat slot so a different revision or build flag set can be evaluated in parallel without disturbing the primary baseline.
+
+### One-off solve
+
+For ad-hoc runs without the full harness:
 
 ```bash
 ./coprocessing/cdcl_solver tests/satlib/uf20-91/uf20-01.cnf
@@ -388,92 +474,7 @@ A 5-instance `uf20-91` sample takes ≈ 60 s and produces 12 000+ per-step `PASS
 ./coprocessing/cdcl_solver tests/satlib/uuf50-218/uuf50-01.cnf
 ```
 
----
-
-## Benchmarking
-
-The coprocessor is compared against three software CDCL solvers (Kissat, Glucose, MiniSat) and against itself on a hardware-cycle metric. The four solver submodules listed in [§ First-Time Setup](#first-time-setup-fresh-clone) are the baselines.
-
-### Solvers under comparison
-
-| Binary | Path | What it represents |
-|--------|------|-------------------|
-| `cdcl_solver`  | `coprocessing/cdcl_solver`           | Our HW-accelerated CDCL (this project) |
-| `minisat` | `minisat/build/release/bin/minisat`  | Classic CDCL — closest peer to our software loop |
-| `minisat` | `minisat2/build/release/bin/minisat` | Alternate MiniSat checkout (e.g., different build flags) |
-| `glucose` | `glucose/simp/glucose`               | LBD-based CDCL, restart heuristic improvements |
-| `kissat`  | `kissat/build/kissat`                | SAT-Competition SOTA reference |
-
-All four read DIMACS CNF directly and print the standard `s SATISFIABLE` / `s UNSATISFIABLE` plus per-solver statistics. Wall-clock numbers come from `/usr/bin/time -v` (or `time` builtins); decision/conflict/propagation counts are parsed from each solver's stdout.
-
-### Two metrics, two purposes
-
-**1. Wall-clock (software-vs-software, today).** Run each solver on the same instance set; compare end-to-end runtime and RSS. The coprocessor's wall-clock includes Verilator simulation overhead, so it is *expected* to lose to native-C software solvers on this metric until we project HW-cycle counts through synthesized Fmax (see below). This comparison is still useful to confirm decision/conflict/propagation counts are in the same regime as MiniSat (which our 1-UIP + VSIDS loop is patterned after).
-
-**2. Per-propagation cycle count (HW-vs-published-HW, Fmax-independent).** This is the primary defensible figure-of-merit for the hardware. The coprocessor tracks `n_hw_load`, `n_hw_bcp`, `n_hw_undo`; mapping each to its FSM cycle count from [src/sat_submodule.sv](src/sat_submodule.sv):
-
-| Op    | Cycles | FSM path |
-|-------|--------|----------|
-| LOAD  | 2      | `S_IDLE → S_LOAD → S_IDLE` |
-| BCP   | 3      | `S_IDLE → S_BCP1 → S_BCP2 → S_IDLE` |
-| UNDO  | 2      | `S_IDLE → S_UNDO → S_IDLE` |
-
-so total `hw_cycles = 2*hw_load + 3*hw_bcp + 2*hw_undo`. The headline figure is **`hw_cycles / propagations` ("cycles per implication")** — directly comparable to numbers reported by published ASIC SAT-solver papers and independent of Fmax / process node.
-
-Once TSMC 65 nm synthesis completes (see [benchmarkingplan.md](benchmarkingplan.md)), `hw_time = hw_cycles / Fmax` converts the cycle counts to wall-clock for the wall-clock comparison.
-
-### Running a single instance against every solver
-
-```bash
-INSTANCE=tests/satlib/uf20-91/uf20-01.cnf
-
-/usr/bin/time -v ./coprocessing/cdcl_solver         "$INSTANCE"
-/usr/bin/time -v ./kissat/build/kissat              "$INSTANCE"
-/usr/bin/time -v ./glucose/simp/glucose             "$INSTANCE"
-/usr/bin/time -v ./minisat/build/release/bin/minisat "$INSTANCE"
-```
-
-The coprocessor's stderr line
-
-```
-c originals=91 learnts=… decisions=… conflicts=… propagations=… hw_bcp=… hw_undo=… hw_load=…
-```
-
-is what feeds the cycle-per-implication metric.
-
-### Running a benchmark suite
-
-The simplest reproducible suite is SATLIB `uf20-91` (small enough that every solver finishes in milliseconds, large enough to give stable medians):
-
-```bash
-for cnf in tests/satlib/uf20-91/uf20-0{1,2,3,4,5}.cnf; do
-  echo "=== $cnf ==="
-  /usr/bin/time -f "wall=%e rss=%M"  ./coprocessing/cdcl_solver "$cnf" 2>&1 | tail -2
-  /usr/bin/time -f "wall=%e rss=%M"  ./kissat/build/kissat        "$cnf" 2>&1 | tail -2
-  /usr/bin/time -f "wall=%e rss=%M"  ./glucose/simp/glucose       "$cnf" 2>&1 | tail -2
-done
-```
-
-Repeat 10× per instance to get stable medians (sub-millisecond runtimes are noise-dominated otherwise) and aggregate into a CSV — that CSV is what the final report draws from.
-
-For the harder 50-variable sets:
-
-```bash
-./coprocessing/cdcl_solver tests/satlib/uf50-218/uf50-01.cnf       # SAT
-./coprocessing/cdcl_solver tests/satlib/uuf50-218/uuf50-01.cnf     # UNSAT
-./kissat/build/kissat       tests/satlib/uuf50-218/uuf50-01.cnf
-```
-
-Note: the coprocessor's pre-generated Verilator model is sized for `NUM_CLAUSES = 16`; instances with more original clauses than the hardware capacity require a Verilator regeneration at a larger `NUM_CLAUSES` (see [§ Regenerating the Verilated model](#regenerating-the-verilated-model)).
-
-### Why four solver submodules
-
-- **MiniSat** is the algorithmic peer — our software loop implements the same 1-UIP analysis and VSIDS heuristic. If the coprocessor's decision/conflict/propagation counts diverge wildly from MiniSat's, that's a bug in our CDCL, not a property of the hardware.
-- **Glucose** stresses LBD-driven clause management; it tells us whether more aggressive learnt-clause policies would buy anything for instances at our capacity.
-- **Kissat** is the SOTA upper bound — anything Kissat solves much faster than us *and* MiniSat indicates algorithmic ceiling, not hardware ceiling.
-- **minisat2** is a second checkout slot for evaluating a different MiniSat revision or build configuration in parallel without disturbing the primary baseline.
-
-The full methodology — instance-set curation, repeat counts, ratio-of-ratios analysis, and TSMC 65 nm synthesis numbers — lives in [benchmarkingplan.md](benchmarkingplan.md).
+Note: the pre-generated Verilator model is sized for `NUM_CLAUSES = 16`; SATLIB instances exceeding this need a Verilator regeneration at a larger `NUM_CLAUSES` (see [§ Regenerating the Verilated model](#regenerating-the-verilated-model)). `bench_cdcl.py` flags overflow cases with `T+OVF` in the `OK` column.
 
 ---
 
