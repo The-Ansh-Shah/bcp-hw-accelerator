@@ -109,6 +109,9 @@ public:
     uint64_t n_hw_undo = 0;
     uint64_t n_hw_load = 0;
     bool     unsat_at_load = false;
+    double   hw_sim_ns_ = 0.0;  // accumulated Verilator eval() wall time
+    double   hw_aux_ns_ = 0.0;  // simulation artifacts: setValInHW_ scan + SW learnt BCP scan
+    uint64_t n_sw_bcp_ups_ = 0; // UPs found by SW learnt BCP → modeled as HW BCP cycles
 
     // ── Public API ───────────────────────────────────────────────
     void setNumVars(int n) {
@@ -137,8 +140,11 @@ public:
     Vsat_solver* dut_;
 
     void tick_() {
+        auto _t0 = std::chrono::steady_clock::now();
         dut_->clk = 0; dut_->eval(); main_time += 5;
         dut_->clk = 1; dut_->eval(); main_time += 5;
+        hw_sim_ns_ += std::chrono::duration<double, std::nano>(
+            std::chrono::steady_clock::now() - _t0).count();
     }
     void idle_inputs_() {
         dut_->op = OP_IDLE;
@@ -217,10 +223,13 @@ public:
     // sees the variable as assigned. Used to "consume" a reported UP before
     // re-issuing bcp_hw_ for the same (vid,val) to find additional UPs.
     void setValInHW_(int vid, int val_code) {
+        auto _t0 = std::chrono::steady_clock::now();
         for (int row = 0; row < HW_NUM_ROWS; row++) {
             if (dut_->sat_submodule->vid_store[row] == static_cast<uint32_t>(vid))
                 dut_->sat_submodule->val_store[row] = static_cast<uint8_t>(val_code);
         }
+        hw_aux_ns_ += std::chrono::duration<double, std::nano>(
+            std::chrono::steady_clock::now() - _t0).count();
     }
 
     void undo_hw_(int vid) {
@@ -379,6 +388,8 @@ public:
     // SW BCP for learnts not represented in HW: either they overflow the
     // learnt-clause slots or are wider than the RTL can encode faithfully.
     int propagateLearntsSW_() {
+        auto _t0 = std::chrono::steady_clock::now();
+        int result = -1;
         for (int li = 0; li < static_cast<int>(learnts.size()); li++) {
             if (li < static_cast<int>(learnt_in_hw.size()) && learnt_in_hw[li]) continue;
             const vector<Lit>& c = learnts[li].lits;
@@ -390,12 +401,15 @@ public:
                 if (lit_undef_(lt)) { num_u++; u_lit = lt; }
             }
             if (sat) continue;
-            if (num_u == 0) return li;
+            if (num_u == 0) { result = li; break; }
             if (num_u == 1) {
-                if (!enqueue(u_lit, encode_learnt(li))) return li;
+                n_sw_bcp_ups_++;  // in real HW this UP comes from a BCP call
+                if (!enqueue(u_lit, encode_learnt(li))) { result = li; break; }
             }
         }
-        return -1;
+        hw_aux_ns_ += std::chrono::duration<double, std::nano>(
+            std::chrono::steady_clock::now() - _t0).count();
+        return result;
     }
 
     // ── 1-UIP conflict analysis (MiniSat-style) ──────────────────
@@ -544,32 +558,40 @@ int main(int argc, char** argv) {
     }
     Solver S;
     if (!parseDIMACS(argv[1], S)) return 1;
+    double hw_sim_before = S.hw_sim_ns_;
+    double hw_aux_before = S.hw_aux_ns_;
     auto t0 = std::chrono::steady_clock::now();
     int r = S.solve();
     auto t1 = std::chrono::steady_clock::now();
-    double sw_time_ns = std::chrono::duration<double, std::nano>(t1 - t0).count();
+    double total_ns   = std::chrono::duration<double, std::nano>(t1 - t0).count();
+    // sw_time = pure CDCL logic: decisions, conflict analysis, backtracking.
+    // Excludes Verilator eval overhead and simulation-only artifacts
+    // (setValInHW_ row scan, propagateLearntsSW_ scan — both disappear in real HW).
+    double sw_time_ns = total_ns - (S.hw_sim_ns_ - hw_sim_before)
+                                 - (S.hw_aux_ns_ - hw_aux_before);
     if (r == 1) {
         std::cout << "s SATISFIABLE\n";
         S.printModel(std::cout);
     } else {
         std::cout << "s UNSATISFIABLE\n";
     }
-    uint64_t hw_bcp_cycles = S.n_hw_bcp;          // 1 true HW cycle per BCP
-    double   bcp_time_ns   = hw_bcp_cycles / 1.0; // @1GHz: 1 cycle = 1ns
-    std::cerr << "c originals="      << S.originals.size()
-              << " learnts="         << S.learnts.size()
-              << " decisions="       << S.n_decisions
-              << " conflicts="       << S.n_conflicts
-              << " propagations="    << S.n_propagations
-              << " hw_bcp="          << S.n_hw_bcp
-              << " hw_undo="         << S.n_hw_undo
-              << " hw_load="         << S.n_hw_load
+    // HW cycles: each op = 1 memory-access cycle @ 1 GHz = 1 ns.
+    // n_sw_bcp_ups_ are UPs that came from SW learnt BCP — in real HW with
+    // unlimited clause storage these would be HW BCP results instead.
+    uint64_t hw_cycles   = S.n_hw_load + S.n_hw_bcp + S.n_hw_undo + S.n_sw_bcp_ups_;
+    double   hw_time_ns  = static_cast<double>(hw_cycles);
+    std::cerr << "c originals="    << S.originals.size()
+              << " learnts="       << S.learnts.size()
+              << " decisions="     << S.n_decisions
+              << " conflicts="     << S.n_conflicts
+              << " propagations="  << S.n_propagations
+              << " hw_bcp="        << S.n_hw_bcp
+              << " hw_undo="       << S.n_hw_undo
+              << " hw_load="       << S.n_hw_load
               << "\n";
-    std::cerr << "c hw_bcp_cycles="  << hw_bcp_cycles
-              << " (sim_cycles="     << S.n_hw_bcp * 3 << "/3)"
-              << " @1GHz bcp_time="  << bcp_time_ns    << "ns"
-              << " ("                << bcp_time_ns / 1e3 << "us)\n";
-    std::cerr << "c sw_cdcl_time="   << sw_time_ns     << "ns"
-              << " ("                << sw_time_ns / 1e3 << "us)\n";
+    std::cerr << "c hw_cycles="    << hw_cycles
+              << " hw_time="       << hw_time_ns   << "ns"
+              << " sw_time="       << sw_time_ns   << "ns"
+              << "\n";
     return 0;
 }
