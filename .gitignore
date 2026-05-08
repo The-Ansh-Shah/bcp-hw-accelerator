@@ -5,8 +5,7 @@ simv_*
 !simv_*.v
 
 # VCS build artifacts
-simv.daidir/
-simv_*.daidir/
+*.daidir/
 csrc/
 DVEfiles/
 ucli.key
@@ -40,9 +39,5 @@ results/
 __pycache__/
 *.pyc
 
-# AI-agent scratch files (progress handoffs, session state, local config)
+# Local scratch / progress notes
 PROGRESS.md
-.claude/
-CLAUDE.md
-.cursorrules
-.aider*

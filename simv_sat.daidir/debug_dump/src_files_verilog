@@ -1,8 +1,0 @@
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/cam_cell.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/cam_sram_array.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/cam_sram_row.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/combining_logic.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/processing_logic.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/sat_submodule.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/src/sram_row.sv
-/home/cc/cs152/sp26/class/cs152-acz/bcp-hw-accelerator/tb/sat_submodule_tb.sv
