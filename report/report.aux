@@ -20,59 +20,59 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Average runtime distribution across CDCL operations on phase--transition benchmarks. BCP dominates by an order of magnitude.\relax }}{1}{figure.caption.1}}
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
 \newlabel{fig:profile}{{1}{1}{Average runtime distribution across CDCL operations on phase--transition benchmarks. BCP dominates by an order of magnitude.\relax }{figure.caption.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Approach and Related Work}{2}{section.2}}
-\@writefile{toc}{\contentsline {paragraph}{Why CAM + SRAM.}{2}{section*.2}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Approach and Related Work}{1}{section.2}}
+\@writefile{toc}{\contentsline {paragraph}{Why CAM + SRAM.}{1}{section*.2}}
 \@writefile{toc}{\contentsline {paragraph}{Where we differ.}{2}{section*.3}}
 \@writefile{toc}{\contentsline {paragraph}{Architectural sketch.}{2}{section*.4}}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Coprocessor partitioning. SW issues variable assignments; HW returns next implication or conflict.\relax }}{2}{figure.caption.5}}
 \newlabel{fig:arch}{{2}{2}{Coprocessor partitioning. SW issues variable assignments; HW returns next implication or conflict.\relax }{figure.caption.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {3}Formal Model and Algorithms}{3}{section.3}}
-\newlabel{sec:formal}{{3}{3}{Formal Model and Algorithms}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Clause and trail semantics}{3}{subsection.3.1}}
-\@writefile{toc}{\contentsline {paragraph}{Per--clause evaluation.}{3}{section*.6}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Formal Model and Algorithms}{2}{section.3}}
+\newlabel{sec:formal}{{3}{2}{Formal Model and Algorithms}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Clause and trail semantics}{2}{subsection.3.1}}
+\@writefile{toc}{\contentsline {paragraph}{Per--clause evaluation.}{2}{section*.6}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}HW--BCP cycle}{3}{subsection.3.2}}
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Hardware operations. $^\dagger $Modeled as 1 HW cycle to reflect a production $1$M--slot SRAM in which all clauses live in HW.\relax }}{3}{table.caption.7}}
 \newlabel{tab:ops}{{1}{3}{Hardware operations. $^\dagger $Modeled as 1 HW cycle to reflect a production $1$M--slot SRAM in which all clauses live in HW.\relax }{table.caption.7}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Coprocessor algorithm}{3}{subsection.3.3}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Worked example}{3}{subsection.3.4}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Single--cycle BCP: CAM returns matching rows, SRAM gives literal values, evaluator detects \textsc  {unit}.\relax }}{3}{figure.caption.8}}
+\newlabel{fig:walk}{{3}{3}{Single--cycle BCP: CAM returns matching rows, SRAM gives literal values, evaluator detects \textsc {unit}.\relax }{figure.caption.8}{}}
 \@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces HW/SW Coprocessed CDCL\relax }}{4}{algorithm.1}}
 \newlabel{alg:co}{{1}{4}{HW/SW Coprocessed CDCL\relax }{algorithm.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Worked example}{4}{subsection.3.4}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Single--cycle BCP: CAM returns matching rows, SRAM gives literal values, evaluator detects \textsc  {unit}.\relax }}{4}{figure.caption.8}}
-\newlabel{fig:walk}{{3}{4}{Single--cycle BCP: CAM returns matching rows, SRAM gives literal values, evaluator detects \textsc {unit}.\relax }{figure.caption.8}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {4}Major Technical Challenges}{4}{section.4}}
 \@writefile{toc}{\contentsline {paragraph}{C1. Time bookkeeping in a Verilator harness.}{4}{section*.9}}
 \@writefile{toc}{\contentsline {paragraph}{C2. CAM capacity vs.\ learnt blowup.}{4}{section*.10}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces CAM slot utilization on each benchmark set. uf200 leaves only $\sim $$164$ free slots, causing immediate learnt overflow and degraded BCP effectiveness.\relax }}{5}{figure.caption.11}}
-\newlabel{fig:blowup}{{4}{5}{CAM slot utilization on each benchmark set. uf200 leaves only $\sim $$164$ free slots, causing immediate learnt overflow and degraded BCP effectiveness.\relax }{figure.caption.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces CAM slot utilization on each benchmark set. uf200 leaves only $\sim $$164$ free slots, causing immediate learnt overflow and degraded BCP effectiveness.\relax }}{4}{figure.caption.11}}
+\newlabel{fig:blowup}{{4}{4}{CAM slot utilization on each benchmark set. uf200 leaves only $\sim $$164$ free slots, causing immediate learnt overflow and degraded BCP effectiveness.\relax }{figure.caption.11}{}}
 \@writefile{toc}{\contentsline {paragraph}{C3. HW/SW state coherence on backtrack.}{5}{section*.12}}
 \@writefile{toc}{\contentsline {paragraph}{C4. Full--hierarchy elaboration timeout.}{5}{section*.13}}
 \@writefile{toc}{\contentsline {section}{\numberline {5}Results}{5}{section.5}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}End--to--end median solve time}{5}{subsection.5.1}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Median solve time on UF/UUF benchmarks, log--scaled. Our coprocessor dominates up to $\sim $$175$ variables; beyond that, Kissat's superior CDCL heuristic surpasses our naive search.\relax }}{5}{figure.caption.14}}
+\newlabel{fig:scaling}{{5}{5}{Median solve time on UF/UUF benchmarks, log--scaled. Our coprocessor dominates up to $\sim $$175$ variables; beyond that, Kissat's superior CDCL heuristic surpasses our naive search.\relax }{figure.caption.14}{}}
 \@writefile{toc}{\contentsline {paragraph}{What worked.}{5}{section*.15}}
 \@writefile{toc}{\contentsline {paragraph}{What didn't.}{5}{section*.16}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Median solve time on UF/UUF benchmarks, log--scaled. Our coprocessor dominates up to $\sim $$175$ variables; beyond that, Kissat's superior CDCL heuristic surpasses our naive search.\relax }}{6}{figure.caption.14}}
-\newlabel{fig:scaling}{{5}{6}{Median solve time on UF/UUF benchmarks, log--scaled. Our coprocessor dominates up to $\sim $$175$ variables; beyond that, Kissat's superior CDCL heuristic surpasses our naive search.\relax }{figure.caption.14}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Win rate vs.\ Kissat by satisfiability. UNSAT instances favor our coprocessor far more than SAT instances do. We attribute this to Kissat's aggressive phase saving / restarts being most useful on satisfiable inputs --- a heuristic edge that does not help when the proof must enumerate the whole tree.\relax }}{6}{table.caption.17}}
 \newlabel{tab:sat-unsat}{{2}{6}{Win rate vs.\ Kissat by satisfiability. UNSAT instances favor our coprocessor far more than SAT instances do. We attribute this to Kissat's aggressive phase saving / restarts being most useful on satisfiable inputs --- a heuristic edge that does not help when the proof must enumerate the whole tree.\relax }{table.caption.17}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}SAT vs.\ UNSAT asymmetry}{6}{subsection.5.2}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Counterfactual: is BCP really accelerated?}{6}{subsection.5.3}}
 \newlabel{sec:counterfactual}{{5.3}{6}{Counterfactual: is BCP really accelerated?}{subsection.5.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Replacing HW--BCP with Kissat's measured BCP rate, while keeping the identical CDCL trajectory, slows the same solver by $2.2$--$15.7\times $. The hardware is doing the work.\relax }}{6}{figure.caption.18}}
+\newlabel{fig:counterf}{{6}{6}{Replacing HW--BCP with Kissat's measured BCP rate, while keeping the identical CDCL trajectory, slows the same solver by $2.2$--$15.7\times $. The hardware is doing the work.\relax }{figure.caption.18}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Amdahl's--law breakdown}{6}{subsection.5.4}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Small but provably hard instances}{6}{subsection.5.5}}
-\newlabel{sec:hard}{{5.5}{6}{Small but provably hard instances}{subsection.5.5}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Replacing HW--BCP with Kissat's measured BCP rate, while keeping the identical CDCL trajectory, slows the same solver by $2.2$--$15.7\times $. The hardware is doing the work.\relax }}{7}{figure.caption.18}}
-\newlabel{fig:counterf}{{6}{7}{Replacing HW--BCP with Kissat's measured BCP rate, while keeping the identical CDCL trajectory, slows the same solver by $2.2$--$15.7\times $. The hardware is doing the work.\relax }{figure.caption.18}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Total runtime breakdown on uf100--430 (median). Our solver is now CDCL--bound; MiniSat2 is BCP--bound.\relax }}{7}{figure.caption.19}}
 \newlabel{fig:amdahl}{{7}{7}{Total runtime breakdown on uf100--430 (median). Our solver is now CDCL--bound; MiniSat2 is BCP--bound.\relax }{figure.caption.19}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Small but hard instances}{7}{subsection.5.5}}
+\newlabel{sec:hard}{{5.5}{7}{Small but hard instances}{subsection.5.5}{}}
 \@writefile{toc}{\contentsline {paragraph}{Methodology.}{7}{section*.20}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Hard--instance suite, single--run. ``noise'' = result falls below subprocess--startup floor for at least one solver, so no winner is claimed. HW wins outright on 9 of 11 instances.\relax }}{7}{table.caption.21}}
+\newlabel{tab:hard}{{3}{7}{Hard--instance suite, single--run. ``noise'' = result falls below subprocess--startup floor for at least one solver, so no winner is claimed. HW wins outright on 9 of 11 instances.\relax }{table.caption.21}{}}
 \@writefile{toc}{\contentsline {paragraph}{Discussion.}{7}{section*.23}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Future work}{7}{subsection.5.6}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Hard--instance suite, single--run. ``noise'' = result falls below subprocess--startup floor for at least one solver, so no winner is claimed. HW wins outright on 9 of 11 instances.\relax }}{8}{table.caption.21}}
-\newlabel{tab:hard}{{3}{8}{Hard--instance suite, single--run. ``noise'' = result falls below subprocess--startup floor for at least one solver, so no winner is claimed. HW wins outright on 9 of 11 instances.\relax }{table.caption.21}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Pigeonhole PHP$_n$ scaling, $n=3$--$8$, log--scale. The gap between HW--BCP and the SW solvers \emph  {widens} as $n$ grows: on PHP$_8$, HW is $5.9\times $ faster than Kissat, $28\times $ faster than MiniSat2, and $142\times $ faster than Glucose --- on a class where the search space itself is exponential, the constant--time HW--BCP cycle compounds across every conflict in the proof.\relax }}{8}{figure.caption.22}}
-\newlabel{fig:hard}{{8}{8}{Pigeonhole PHP$_n$ scaling, $n=3$--$8$, log--scale. The gap between HW--BCP and the SW solvers \emph {widens} as $n$ grows: on PHP$_8$, HW is $5.9\times $ faster than Kissat, $28\times $ faster than MiniSat2, and $142\times $ faster than Glucose --- on a class where the search space itself is exponential, the constant--time HW--BCP cycle compounds across every conflict in the proof.\relax }{figure.caption.22}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Pigeonhole PHP$_n$ scaling, $n=3$--$8$, log--scale. The gap between HW--BCP and the SW solvers widens as $n$ grows: on PHP$_8$, HW is $5.9\times $ faster than Kissat, $28\times $ faster than MiniSat2, and $142\times $ faster than Glucose.\relax }}{8}{figure.caption.22}}
+\newlabel{fig:hard}{{8}{8}{Pigeonhole PHP$_n$ scaling, $n=3$--$8$, log--scale. The gap between HW--BCP and the SW solvers widens as $n$ grows: on PHP$_8$, HW is $5.9\times $ faster than Kissat, $28\times $ faster than MiniSat2, and $142\times $ faster than Glucose.\relax }{figure.caption.22}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {6}Team Roles}{8}{section.6}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}Course Topics Applied}{9}{section.7}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Course Topics Applied}{8}{section.7}}
 \@writefile{toc}{\contentsline {section}{\numberline {8}Feedback}{9}{section.8}}
 \@writefile{toc}{\contentsline {paragraph}{What helped.}{9}{section*.24}}
 \@writefile{toc}{\contentsline {paragraph}{What we wish had been covered.}{9}{section*.25}}
