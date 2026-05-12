@@ -13,7 +13,7 @@
 \usepackage{algorithmic}
 \usepackage{float}
 
-\usetikzlibrary{positioning,shapes.geometric,arrows.meta,fit,backgrounds,calc,matrix}
+\usetikzlibrary{positioning,shapes.geometric,arrows.meta,fit,backgrounds,calc,matrix,decorations.pathreplacing}
 
 \hypersetup{
   colorlinks=true,
@@ -224,70 +224,129 @@ T_{\mathrm{hw}} = (\,n_{\mathrm{load}} + n_{\mathrm{bcp}} + n_{\mathrm{undo}} +
 n_{\mathrm{sw\_bcp}}\,)\times 10.1~\mathrm{ns}.
 \]
 
-\subsection{Coprocessor algorithm}
-The CDCL outer loop is essentially MiniSat--style 1--UIP, but every
-\texttt{propagate()} call traps into the RTL (Algorithm~\ref{alg:co}).
+\subsection{HW--BCP propagate}
+Figure~\ref{fig:hwbcp} shows the CAM/SRAM array layout and the
+inner propagate routine. Each of the $64$ clauses occupies four
+rows; the CAM column stores the variable ID for that literal slot,
+the SRAM column stores the literal's $\{0,1,U\}$ value
+(2--bit encoding: $\mathtt{00}{=}0$, $\mathtt{11}{=}1$,
+$\mathtt{01}{=}U$). The per--clause processing logic
+combinationally reduces its four literal values to three flags ---
+\textsc{conf}, \textsc{up}, \textsc{done} --- which are combined
+across clauses with priority $\textsc{conf}\!\succ\!\textsc{up}\!\succ\!\textsc{done}$.
+For every literal popped off the trail, the engine scans all
+clauses indexing that variable, returning either a conflict clause
+or the first new unit implication.
 
-\begin{algorithm}[h]
-\small
-\caption{HW/SW Coprocessed CDCL}\label{alg:co}
-\begin{algorithmic}[1]
-\STATE Load all original clauses via \texttt{LOAD}
-\WHILE{true}
-  \STATE $r \leftarrow$ HW-BCP() \quad \emph{(single--cycle parallel scan)}
-  \IF{$r =$ \textsc{conflict}}
-    \IF{decision level $=0$} \STATE \textbf{return} UNSAT \ENDIF
-    \STATE $(c_{\text{learnt}}, lvl) \leftarrow$ Analyze1UIP$()$
-    \STATE Backtrack$(lvl)$ via \texttt{UNDO}
-    \STATE LoadLearnt$(c_{\text{learnt}})$ \quad \emph{(or overflow $\to$ SW pool)}
-  \ELSIF{$r =$ \textsc{unit}$(\ell)$}
-    \STATE Enqueue $\ell$ on trail; \texttt{LOAD} updates SRAM
-  \ELSE
-    \IF{trail covers all vars} \STATE \textbf{return} SAT \ENDIF
-    \STATE $v \leftarrow$ VSIDS-Pick$()$; assign and \texttt{LOAD}
-  \ENDIF
-\ENDWHILE
-\end{algorithmic}
-\end{algorithm}
-
-\subsection{Worked example}
-Figure~\ref{fig:walk} shows a single propagation step for
-$C_0 = x_1 \vee x_2 \vee x_3$. The trail head is $x_2 = 0$. The CAM
-returns rows referencing $x_1, x_2, x_3$ for $C_0$; the SRAM resolves
-$x_1=0, x_2=0, x_3=U$; the per--clause evaluator detects exactly one
-unassigned literal with the rest false, so it asserts \textsc{unit}
-and emits $x_3 \gets 1$ in the same cycle.
-
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[every node/.style={font=\scriptsize\sffamily}]
-  \matrix[matrix of nodes, nodes={draw,minimum width=0.9cm,minimum height=0.55cm,anchor=center},
-          row sep=-\pgflinewidth,column sep=-\pgflinewidth] (cam) at (0,0) {
-   \textbf{var} & \textbf{cls} & \textbf{idx} \\
-   $x_1$ & $C_0$ & 0 \\
-   $x_2$ & $C_0$ & 1 \\
-   $x_1$ & $C_1$ & 0 \\
-   $x_3$ & $C_1$ & 1 \\
-  };
-  \matrix[matrix of nodes, nodes={draw,minimum width=0.9cm,minimum height=0.55cm,anchor=center},
-          row sep=-\pgflinewidth,column sep=-\pgflinewidth] (sram) at (3.5,0) {
-   \textbf{var} & \textbf{val} \\
-   $x_1$ & 0 \\
-   $x_2$ & 0 \\
-   $x_3$ & U \\
-   $x_4$ & U \\
-  };
-  \node[draw,rounded corners,fill=yellow!15,align=left] at (7.0,0)
-   {$C_0 = x_1 \vee x_2 \vee x_3$\\
-    $x_1=0\;\textcolor{red}{\times}$\\
-    $x_2=0\;\textcolor{red}{\times}$\\
-    $x_3=U\;\Rightarrow$\\
-    \textbf{UNIT}: $x_3 \gets 1$};
+  % ---------------- CAM Array ----------------
+  \node[font=\small\bfseries] at (1.5,4.55) {CAM Array};
+  \foreach \r/\a/\b/\c [count=\i] in {
+      0/0/0/0, 1/0/0/1, 2/1/1/0, 3/1/1/1,
+      4/0/0/1, 5/1/0/0, 6/0/1/0, 7/1/1/0}{
+    \pgfmathsetmacro\y{4 - 0.45*\r}
+    \foreach \v [count=\j] in {\a,\b,\c}{
+      \pgfmathsetmacro\x{0.5 + 0.5*(\j-1)}
+      \draw (\x-0.25,\y-0.22) rectangle (\x+0.25,\y+0.22);
+      \node at (\x,\y) {\v};
+    }
+  }
+  % dashed conflict-row indicator on row 2 of C0 and C1
+  \draw[red!70,dashed,thick] (0.2,4-0.45*2) -- (5.4,4-0.45*2);
+  \draw[red!70,dashed,thick] (0.2,4-0.45*6) -- (5.4,4-0.45*6);
+  % C0, C1 group labels (left)
+  \draw[decorate,decoration={brace,amplitude=4pt}]
+     (-0.1,4-0.45*3-0.25) -- (-0.1,4+0.25)
+     node[midway,left=2pt,font=\scriptsize] {$C_0$};
+  \draw[decorate,decoration={brace,amplitude=4pt}]
+     (-0.1,4-0.45*7-0.25) -- (-0.1,4-0.45*4+0.25)
+     node[midway,left=2pt,font=\scriptsize] {$C_1$};
+  % "..." in the middle
+  \node at (2.5,4-0.45*8-0.1) {$\vdots$};
+  \node[font=\scriptsize,anchor=west] at (-1.0,4-0.45*8-0.6) {64 rows};
+
+  % ---------------- SRAM Array ----------------
+  \node[font=\small\bfseries,anchor=south] at (4.2,4.55) {SRAM};
+  \node[font=\tiny] at (3.85,4.30) {value};
+  \node[font=\tiny] at (4.55,4.30) {pol};
+  \foreach \r/\v/\p [count=\i] in {
+      0/0/0, 1/1/0, 2/0/1, 3/1/0,
+      4/1/0, 5/1/1, 6/1/0, 7/0/0}{
+    \pgfmathsetmacro\y{4 - 0.45*\r}
+    \foreach \w [count=\j] in {\v,\p}{
+      \pgfmathsetmacro\x{3.85 + 0.7*(\j-1)}
+      \draw (\x-0.25,\y-0.22) rectangle (\x+0.25,\y+0.22);
+      \node at (\x,\y) {\w};
+    }
+  }
+
+  % ---------------- Per-clause processing logic ----------------
+  \foreach \rg [count=\i from 0] in {0,1}{
+    \pgfmathsetmacro\yc{4 - 0.45*(\rg*4+1.5)}
+    \draw[fill=blue!12,thick]
+       (6.0,\yc-0.55) -- (6.0,\yc+0.55) arc (90:-90:0.55) -- cycle;
+    \node[font=\tiny,anchor=west] at (6.7,\yc+0.40) {CONF};
+    \node[font=\tiny,anchor=west] at (6.7,\yc+0.00) {UP};
+    \node[font=\tiny,anchor=west] at (6.7,\yc-0.40) {DONE};
+    \draw[->,thick] (6.6,\yc+0.40) -- (6.85,\yc+0.40);
+    \draw[->,thick] (6.6,\yc+0.00) -- (6.85,\yc+0.00);
+    \draw[->,thick] (6.6,\yc-0.40) -- (6.85,\yc-0.40);
+  }
+
+  % ---------------- Value decode legend ----------------
+  \begin{scope}[shift={(0.5,-0.7)}]
+    \node[font=\scriptsize\bfseries,anchor=west] at (-0.1,0.6) {Value decode};
+    \draw (0,0) rectangle (0.6,0.4); \node at (0.3,0.2) {0};
+    \draw (0.6,0) rectangle (1.4,0.4); \node at (1.0,0.2) {\texttt{00}};
+    \draw (0,-0.4) rectangle (0.6,0); \node at (0.3,-0.2) {1};
+    \draw (0.6,-0.4) rectangle (1.4,0); \node at (1.0,-0.2) {\texttt{11}};
+    \draw (0,-0.8) rectangle (0.6,-0.4); \node at (0.3,-0.6) {$U$};
+    \draw (0.6,-0.8) rectangle (1.4,-0.4); \node at (1.0,-0.6) {\texttt{01}};
+  \end{scope}
+
+  % ---------------- Pseudocode panel (right) ----------------
+  \node[draw,rounded corners,fill=gray!4,inner sep=4pt,
+        align=left,anchor=north west,
+        font=\ttfamily\scriptsize]
+       at (8.5,4.7)
+    {HW\_BCP\_Propagate(trail, qhead):\\
+     ~~while qhead < trail.size:\\
+     ~~~~p = trail[qhead++];~v = var(p)\\
+     ~~~~conflict = NONE;~up = NONE\\
+     ~~~~\textcolor{gray!60}{\# scan clauses containing v}\\
+     ~~~~for C in hw\_var\_clauses[v]:\\
+     ~~~~~~(s, u\_lit, u\_idx) = eval(C)\\
+     ~~~~~~if s == CONFLICT:\\
+     ~~~~~~~~conflict = C; break\\
+     ~~~~~~elif s == UNIT and up == NONE:\\
+     ~~~~~~~~up = (u\_lit, C, u\_idx)\\
+     ~~~~\textcolor{gray!60}{\# CONFLICT > UNIT > DONE}\\
+     ~~~~if conflict: return conflict\\
+     ~~~~if up:\\
+     ~~~~~~if value(up.lit) == FALSE:\\
+     ~~~~~~~~return up.reason\\
+     ~~~~~~elif value(up.lit) == UNDEF:\\
+     ~~~~~~~~enqueue(up.lit, up.reason)\\
+     ~~return NO\_CONFLICT};
 \end{tikzpicture}
-\caption{Single--cycle BCP: CAM returns matching rows, SRAM gives
-literal values, evaluator detects \textsc{unit}.}
-\label{fig:walk}
+\caption{Current HW--BCP architecture. Left: CAM/SRAM array
+(64 clauses $\times$ 4 literal rows) with per--clause processing
+logic emitting CONF/UP/DONE; the 2--bit value encoding
+($0\!\to\!\mathtt{00}$, $1\!\to\!\mathtt{11}$, $U\!\to\!\mathtt{01}$)
+lets a single comparator distinguish all three states.
+Right: per--variable propagate routine; on each trail element it
+scans the clauses indexing that variable, returns at the first
+conflict, and enqueues at most one new unit implication.}
+\label{fig:hwbcp}
 \end{figure}
+
+The CDCL outer loop is essentially MiniSat--style 1--UIP and
+unchanged from the textbook formulation: decide via VSIDS, call
+\texttt{HW\_BCP\_Propagate}, analyze conflicts at 1--UIP, backtrack
+via \texttt{UNDO} cycles, learnt clauses go to the CAM (or to the
+software overflow pool if the CAM is full).
 
 %==============================================================
 \section{Major Technical Challenges}
