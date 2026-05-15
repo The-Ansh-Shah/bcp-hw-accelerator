@@ -50,10 +50,10 @@ LBD, vivification) have largely saturated.
 Profiling the canonical CDCL loop shows a striking distribution
 (Figure~\ref{fig:profile}): \textbf{BCP alone is 82.7\%} of total
 solver time, with conflict analysis (8.7\%), literal redundancy
-(3.9\%), and branching heuristics (0.6\%) trailing far behind ---
-consistent with the empirical bottleneck identified in the
+(3.9\%), and branching heuristics (0.6\%) trailing far behind.
+This is consistent with the empirical bottleneck identified in the
 course material. This
-makes BCP the natural target for hardware acceleration --- accelerating
+makes BCP the natural target for hardware acceleration, as accelerating
 anything else would deliver, by Amdahl's Law, at most a few percent.
 
 \begin{figure}[h]
@@ -80,7 +80,7 @@ phase--transition benchmarks. BCP dominates by an order of magnitude.}
 \label{fig:profile}
 \end{figure}
 
-\noindent\textbf{Problem statement.} Design and verify a hardware
+\noindent\textbf{Problem Definition.} Design and functionally validate a hardware
 BCP engine that delivers single--cycle unit propagation, integrate
 it with a minimal CDCL software wrapper, and measure end--to--end
 speedup against the most competitive software solvers
@@ -89,8 +89,7 @@ speedup against the most competitive software solvers
 %==============================================================
 \section{Approach and Related Work}
 %==============================================================
-
-\paragraph{Why CAM + SRAM.} Prior hardware SAT
+Prior hardware SAT
 work\footnote{Y.~Zhao \& K.~A.~Sakallah, ICCAD 2008; J.~D.~Davis et
 al., DAC 2008; S.~Park et al.,
 \url{https://par.nsf.gov/servlets/purl/10215919}.} consistently
@@ -99,7 +98,7 @@ Software's two--literal watching scheme is a workaround for sequential
 memory. In hardware, a CAM collapses ``find every clause containing
 $v$'' to a single associative lookup, and an SRAM holds the
 per--variable assignment used by combinational clause--evaluation
-logic --- so every clause is re--evaluated every cycle in parallel
+logic, so every clause is re--evaluated every cycle in parallel
 and watched literals are unnecessary. We adopt the HW--BCP algorithm
 and CAM/SRAM cell behavior of Park et al.\ (the 64--clause $\times$
 4--literal row geometry, the 2--bit $\{0,1,U\}$ encoding, and the
@@ -108,28 +107,28 @@ Sec.~\ref{sec:formal} are reproduced from that work. The integration
 into a CDCL coprocessor, the Verilator harness, and the timing
 methodology are ours.
 
-\paragraph{Where we differ.} Earlier proposals are typically
-all--hardware (HW also performs branching), which makes them
-inflexible and forces the CDCL heuristic into silicon. Our design
-is a \textbf{coprocessor}: HW handles only BCP; SW handles every
-heuristic --- VSIDS, 1--UIP analysis, restarts, learnt management.
-This isolates the BCP speedup so it can be measured cleanly, and
-keeps the door open for arbitrary CDCL improvements without an
-RTL respin.
+Earlier proposals are typically all--hardware (HW also performs
+branching), which makes them inflexible and forces the CDCL heuristic
+into silicon. Our design is a \textbf{coprocessor}: HW handles only
+BCP; SW handles every heuristic: VSIDS, 1--UIP analysis, restarts,
+learnt management. This isolates the BCP speedup so it can be
+measured cleanly, and keeps the door open for arbitrary CDCL
+improvements without an RTL respin.
 
-\paragraph{Architectural sketch.} Figure~\ref{fig:arch} shows the
-target geometry. The chip stores up to $1024$ clauses (capacity
-exhausted in our $1024$--slot RTL prototype; a $1$M--slot SRAM is
-feasible in TSMC~65~nm using Park et al.'s custom memory cells, and
-is what we model in our timing extrapolation).
-Each clause is a row of up to $4$ literals; a CAM cell holds the
-variable ID and an SRAM cell holds the 2--bit value
+Figure~\ref{fig:arch} shows the target geometry. The chip stores up
+to $1024$ clauses (capacity exhausted in our $1024$--slot RTL
+prototype; a $1$M--slot SRAM is feasible in TSMC~65~nm using Park
+et al.'s custom memory cells, and is what we model in our timing
+extrapolation). Each clause is a row of up to $4$ literals; a CAM
+cell holds the variable ID and an SRAM cell holds the 2--bit value
 (\texttt{0}, \texttt{1}, or \texttt{U} = unassigned). A single
 combinational reduction returns three flags per clause every cycle:
 \textsc{conflict}, \textsc{unit}, and \textsc{done}.
 
 \begin{figure}[h]
 \centering
+\setlength{\fboxsep}{8pt}
+\fbox{%
 \begin{tikzpicture}[every node/.style={font=\small\sffamily}, node distance=4mm]
   \node[draw,fill=gray!20,minimum width=4.0cm,minimum height=1.0cm]
     (sw) {SW (CDCL): VSIDS, 1--UIP, restarts};
@@ -153,7 +152,8 @@ combinational reduction returns three flags per clause every cycle:
     \node at (1.8,0.55) {\tiny 2-bit val};
     \node[align=center,font=\tiny] at (3.4,0.55) {CONF /\\ UP / DONE};
   \end{scope}
-\end{tikzpicture}
+\end{tikzpicture}%
+}
 \caption{Coprocessor partitioning. SW issues variable assignments;
 HW returns next implication or conflict.}
 \label{fig:arch}
@@ -352,7 +352,7 @@ software overflow pool if the CAM is full).
 \section{Major Technical Challenges}
 %==============================================================
 
-\paragraph{C1. Time bookkeeping in a Verilator harness.}
+\subsection{Time bookkeeping in a Verilator harness}
 Wall time conflates real CDCL, Verilator \texttt{eval()} cost, and
 simulation--only $O(N)$ scans that would be $O(1)$ in silicon. We
 accumulate the latter two into $hw\_sim\_ns$ and $hw\_aux\_ns$ and
@@ -362,7 +362,7 @@ An early bug had the timers running from solver construction, so
 initial clause loads polluted the BCP budget; we now snapshot at
 \texttt{solve()} entry.
 
-\paragraph{C2. CAM capacity vs.\ learnt blowup.}
+\subsection{CAM capacity and learnt clause overflow}
 On uf200--860 the originals fill 84\% of the $1024$--slot CAM, leaving
 $\sim$$164$ slots before overflow. We handle this with (a) a SW
 overflow pool whose cycles are attributed to HW (justified by the
@@ -406,14 +406,14 @@ degraded BCP effectiveness.}
 \label{fig:blowup}
 \end{figure}
 
-\paragraph{C3. HW/SW state coherence on backtrack.}
+\subsection{HW/SW state coherence on backtrack}
 A bug in \texttt{undo\_hw\_/load\_hw\_} caused the SRAM polarity bit
 to lag the CAM by one cycle under rapid load/undo bursts, producing
 spurious unit implications. The fix drives \texttt{val\_we}
 synchronously with the load address and gates read--back behind one
 extra cycle of stable state.
 
-\paragraph{C4. Full--hierarchy elaboration timeout.}
+\subsection{Full--hierarchy elaboration timeout}
 A pure--RTL run on the full $1024\!\times\!8\!\times\!64 = 524{,}288$--clause
 hierarchy timed out in Verilator (behavioral memories explode the
 logic cone). We therefore parameterize the RTL so benchmarks
@@ -479,18 +479,16 @@ superior CDCL heuristic surpasses our naive search.}
 \label{fig:scaling}
 \end{figure}
 
-\paragraph{What worked.} The coprocessor is faster than \emph{every}
-software solver on every instance set with at most $\sim$$150$
-variables, often by $5$--$30\times$. The mechanism is exactly what
-the architecture promised: BCP per propagation drops from
-hundreds of nanoseconds (Kissat) to a single $10.1$~ns cycle.
-
-\paragraph{What didn't.} On $\ge\!\!175$ variables, Kissat overtakes
-us on SAT instances. The cause is not BCP throughput
-(Section~\ref{sec:counterfactual}) but the lack of restarts,
-phase saving, and clause vivification in our minimal CDCL wrapper:
-once the search tree gets deep, raw BCP speed cannot make up for
-suboptimal decisions.
+The coprocessor is faster than \emph{every} software solver on every
+instance set with at most $\sim$$150$ variables, often by
+$5$--$30\times$. The mechanism is exactly what the architecture
+promised: BCP per propagation drops from hundreds of nanoseconds
+(Kissat) to a single $10.1$~ns cycle. On $\ge\!\!175$ variables,
+Kissat overtakes us on SAT instances, but the cause is not BCP
+throughput (Section~\ref{sec:counterfactual}): it is the lack of
+restarts, phase saving, and clause vivification in our minimal CDCL
+wrapper. Once the search tree gets deep, raw BCP speed cannot make up
+for suboptimal decisions.
 
 \subsection{SAT vs.\ UNSAT asymmetry}
 
@@ -510,7 +508,7 @@ suboptimal decisions.
 \caption{Win rate vs.\ Kissat by satisfiability. UNSAT instances
 favor our coprocessor far more than SAT instances do. We attribute
 this to Kissat's aggressive phase saving / restarts being most
-useful on satisfiable inputs --- a heuristic edge that does not
+useful on satisfiable inputs; it's a heuristic edge that does not
 help when the proof must enumerate the whole tree.}
 \label{tab:sat-unsat}
 \end{table}
@@ -520,8 +518,8 @@ To attribute the speedup to HW--BCP (rather than a Verilator
 quirk), we re--ran the exact CDCL trajectory but plugged in
 Kissat's measured BCP rate per propagation. Our solver runs
 $2.2$--$15.7\times$ slower in this counterfactual
-(Figure~\ref{fig:counterf}) --- HW--BCP is load--bearing, even on
-UF175 where Kissat wins overall: the CDCL heuristic, not BCP, is
+(Figure~\ref{fig:counterf}). This means HW--BCP is load--bearing, even on
+UF175 where Kissat wins overall. It is not BCP, but the CDCL heuristic, that is
 the remaining bottleneck.
 
 \begin{figure}[h]
@@ -561,7 +559,7 @@ $2.2$--$15.7\times$. The hardware is doing the work.}
 
 \subsection{Amdahl's--law breakdown}
 Our solver spends $\sim$$93\%$ of its time in software CDCL and
-$\sim$$7\%$ in BCP --- the inverse of MiniSat2, where BCP is
+$\sim$$7\%$ in BCP, the inverse of MiniSat2, where BCP is
 $\sim$$75\%$ of runtime. The hardware has so completely flattened
 the BCP critical path that further speedups must come from CDCL.
 
@@ -591,7 +589,7 @@ is now CDCL--bound; MiniSat2 is BCP--bound.}
 
 \subsection{Small but hard instances}\label{sec:hard}
 We also tested on a suite of instances known to be difficult for CDCL solvers,
-built at \texttt{tests/satlib/hard\_instances/} (clauses wider than four
+built at \\ \texttt{tests/satlib/hard\_instances/} (clauses wider than four
 literals are split to fit the 4--literal RTL):
 pigeonhole PHP$_n$ ($n{=}3{\ldots}8$); Tseitin parity on odd cycles
 ($C_5,C_7,C_9$); and $k$--colourability of the Grötzsch graph
@@ -681,75 +679,74 @@ CPU time, so we make no claim there. PHP$_9$ and beyond would exceed our 1024--s
 CAM capacity, but the $1$M--slot production target eliminates that constraint.
 
 \subsection{Future work}
-\begin{itemize}[leftmargin=*,itemsep=2pt,topsep=2pt]
-\item Replace the MiniSat--style heuristic with Kissat--style
-restarts, phase saving, and LBD--based clause deletion. Closing the
-CDCL gap should restore HW dominance past 175 variables.
-\item Push the RTL through TSMC~65~nm using Park et al.'s custom
-CAM/SRAM cells (the only PDK for which those cells were
-characterized); a $1$M--slot SRAM in that node eliminates the
-overflow pool entirely.
-\item Pipeline \texttt{LOAD} and \texttt{BCP} so a decision and the
-following propagation overlap, halving CDCL--HW round--trip latency.
-\end{itemize}
+The most impactful next step would be replacing the MiniSat--style
+heuristic with Kissat--style restarts, phase saving, and LBD--based
+clause deletion; closing the CDCL gap should restore HW dominance
+past 175 variables. On the hardware side, pushing the RTL through
+TSMC~65~nm using Park et al.'s custom CAM/SRAM cells (the only PDK
+for which those cells were characterized) would allow a $1$M--slot
+SRAM that eliminates the overflow pool entirely. Finally, pipelining
+\texttt{LOAD} and \texttt{BCP} so a decision and the following
+propagation overlap would halve the CDCL--HW round--trip latency.
 
 %==============================================================
 \section{Team Roles}
 %==============================================================
-\textbf{Evan Wong} primarily took charge in collaborating with staff such as Pierluigi Nuzzo and course staff from EECS 151 for RTL infrastructure and the RTL: the behavioral CAM/SRAM array
-(\texttt{cam\_sram\_array.sv}, \texttt{cam\_cell.sv},
-\texttt{sram\_row.sv}), the per--clause evaluator
-(\texttt{processing\_logic.sv}), the FSM driving load/BCP/undo,
-and the Verilator integration; he also wrote the testbench harness at the RTL level.
-\textbf{Ansh Shah} owned the CDCL software: VSIDS scoring, 1--UIP
-conflict analysis, learnt management with the SW overflow pool,
-and the benchmark/parsing infrastructure (\texttt{bench\_cdcl.py}) and others across multiple iterations. The counterfactual analysis
-(Section~\ref{sec:counterfactual}) and the SAT/UNSAT asymmetry
-study were a joint effort, as was the slide deck and this report.
+\textbf{Evan Wong} handled the RTL infrastructure, including the
+behavioral CAM/SRAM array (\texttt{cam\_sram\_array.sv},
+\texttt{cam\_cell.sv}, \texttt{sram\_row.sv}), the per--clause
+evaluator (\texttt{processing\_logic.sv}), the FSM driving
+load/BCP/undo, the Verilator integration, and the RTL testbench.
+He also consulted with Pierluigi Nuzzo and EECS 151 course staff
+on RTL design decisions. \textbf{Ansh Shah} handled the CDCL
+software: VSIDS scoring, 1--UIP conflict analysis, learnt management
+with the SW overflow pool, and the benchmark and parsing
+infrastructure (\texttt{bench\_cdcl.py}). The counterfactual
+analysis (Section~\ref{sec:counterfactual}), the SAT/UNSAT asymmetry
+study, the slide deck, and this report were joint efforts.
 
 %==============================================================
 \section{Course Topics Applied}
 %==============================================================
-Almost every layer of this project draws on course material:
-\begin{itemize}[leftmargin=*,itemsep=2pt,topsep=2pt]
-\item \textbf{The CDCL loop, unit rule, and BCP as the dominant
-cost.} The coprocessor implements the canonical CDCL algorithm
-(preprocess, decide, deduce, analyze, backtrack); the unit rule is
-the \textsc{unit} flag emitted by the per--clause evaluator. The
-class's empirical claim that BCP dominates runtime is the entire
+The SAT solving lectures were the direct foundation for this project.
+The course covered the full CDCL algorithm structure (preprocess,
+decide, deduce, analyze, backtrack), BCP as the dominant runtime
+cost, and the implication graph as the basis for conflict analysis;
+the \textsc{unit} flag emitted by our per--clause evaluator is a
+direct hardware implementation of the unit rule. The class's
+empirical claim that BCP dominates solver runtime is the entire
 reason we built a HW--BCP coprocessor, and Figure~\ref{fig:amdahl}
 is the post--hoc confirmation.
-\item \textbf{Memory accesses per step.} The lecture's principle
-of minimizing memory traffic per propagation underlies SW
-two--literal watching; our HW achieves the same end via per--cycle
-parallel evaluation, making cost $O(1)$ in clause width and
-watched literals unnecessary.
-\item \textbf{VSIDS, 1--UIP, non--chronological backtracking.}
-Our SW wrapper uses VSIDS scoring with periodic decay, performs
-1--UIP conflict analysis over the implication graph, and jumps to
-the asserting level via \texttt{UNDO} cycles common in most CDCL solvers 
-\item \textbf{Clause deletion / learnt management.} Our SW
-overflow pool plus the $1024$--slot CAM cap is the
-resource--constrained version of the standard clause--deletion
-problem covered in class.
-\end{itemize}
+
+The lecture's principle of minimizing memory accesses per propagation
+step underlies software two--literal watching; understanding why
+software needs it clarified why hardware can skip it entirely. Our
+per--cycle parallel evaluation achieves the same end with $O(1)$
+cost in clause width.
+
+The SW wrapper applies VSIDS scoring with periodic decay, 1--UIP
+conflict analysis over the implication graph, and non--chronological
+backtracking via \texttt{UNDO} cycles, all covered directly in
+class. The SW overflow pool combined with the $1024$--slot CAM cap
+is also the resource--constrained version of the clause deletion and
+learnt management problem covered in the final lectures on modern
+CDCL techniques.
 
 %==============================================================
 \section{Feedback}
 %==============================================================
-\paragraph{What helped.} The class's depth on SAT algorithms mapped directly
-onto our SW wrapper. The discussion of watched literals was
-critical because understanding \emph{why} software needs them clarified
-\emph{why} hardware can skip them. 
+~~~ The class's depth on SAT algorithms mapped directly onto our SW
+wrapper. The discussion of watched literals was critical because
+understanding \emph{why} software needs them clarified \emph{why}
+hardware can skip them.
 
-\paragraph{What we wish had been covered.} A short walkthrough of
-modern CDCL engineering choices beyond the textbook 1--UIP/VSIDS
-core --- restart policies, phase saving, LBD--based clause deletion,
-and clause vivification as used in Kissat --- would have helped us
-read the heuristic gap our counterfactual exposed and pick which
-upgrade to prototype next. Otherwise the class material covered
-what the project needed; the remaining gaps were hardware--specific
-and reasonably out of scope.
+A short walkthrough of modern CDCL engineering choices beyond the
+textbook 1--UIP/VSIDS core, specifically restart policies, phase
+saving, LBD--based clause deletion, and clause vivification as used
+in Kissat, would have helped us interpret the heuristic gap our
+counterfactual exposed and pick which upgrade to prototype next.
+Otherwise the class material covered what the project needed; the
+remaining gaps were hardware--specific and reasonably out of scope.
 
 %==============================================================
 \section*{Code Availability}
